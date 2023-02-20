@@ -11,6 +11,7 @@
 -Wno-gnu-anonymous-struct
 -Wno-deprecated-volatile
 -Wno-nested-anon-types
+-Wno-unused-command-line-argument
 
 -lopengl32
 -lglfw3
@@ -23,7 +24,6 @@
 
 -march=native
 -mtune=native
-
 
 -fno-rtti
 -fno-exceptions

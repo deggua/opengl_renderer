@@ -18,20 +18,97 @@ using namespace glm;
 
 struct Vertex {
     vec3 pos;
-    vec3 rgb;
     vec2 tex;
 };
 
 static const Vertex vertices[] = {
-    {  .pos = {0.5f, 0.5f, 0.0f}, .rgb = {1.0f, 0.0f, 0.0f}, .tex = {1.0f, 1.0f}},
-    { .pos = {0.5f, -0.5f, 0.0f}, .rgb = {0.0f, 1.0f, 0.0f}, .tex = {1.0f, 0.0f}},
-    { .pos = {-0.5f, 0.5f, 0.0f}, .rgb = {1.0f, 1.0f, 1.0f}, .tex = {0.0f, 1.0f}},
-    {.pos = {-0.5f, -0.5f, 0.0f}, .rgb = {0.0f, 0.0f, 1.0f}, .tex = {0.0f, 0.0f}},
+    {.pos = {0.0f, 0.0f, 0.0f}, .tex = {0.0f, 0.0f}},
+    {.pos = {1.0f, 0.0f, 0.0f}, .tex = {1.0f, 0.0f}},
+    {.pos = {0.0f, 1.0f, 0.0f}, .tex = {0.0f, 1.0f}},
+    {.pos = {1.0f, 1.0f, 0.0f}, .tex = {1.0f, 1.0f}},
+    {.pos = {0.0f, 0.0f, 1.0f}, .tex = {0.0f, 0.0f}},
+    {.pos = {1.0f, 0.0f, 1.0f}, .tex = {1.0f, 0.0f}},
+    {.pos = {0.0f, 1.0f, 1.0f}, .tex = {0.0f, 1.0f}},
+    {.pos = {1.0f, 1.0f, 1.0f}, .tex = {1.0f, 1.0f}},
 };
 
-static const GLuint indices[] = {0, 1, 2, 1, 2, 3};
+struct Triangle {
+    GLuint idx[3];
+};
 
-f32 BlendValue = 0.2f;
+static const Triangle indices[] = {
+    {.idx = {1, 0, 3}}, // back
+    {.idx = {0, 2, 3}}, // back
+    {.idx = {4, 5, 6}}, // front
+    {.idx = {5, 7, 6}}, // front
+    {.idx = {6, 7, 3}}, // top
+    {.idx = {6, 3, 2}}, // top
+    {.idx = {0, 5, 4}}, // bottom
+    {.idx = {0, 1, 5}}, // bottom
+    {.idx = {0, 6, 2}}, // left
+    {.idx = {0, 4, 6}}, // left
+    {.idx = {5, 3, 7}}, // right
+    {.idx = {5, 1, 3}}, // right
+};
+
+static const vec3 positions[] = {
+    { 0.0f,  0.0f,   0.0f},
+    { 2.0f,  5.0f, -15.0f},
+    {-1.5f, -2.2f,  -2.5f},
+    {-3.8f, -2.0f, -12.3f},
+    { 2.4f, -0.4f,  -3.5f},
+    {-1.7f,  3.0f,  -7.5f},
+    { 1.3f, -2.0f,  -2.5f},
+    { 1.5f,  2.0f,  -2.5f},
+    { 1.5f,  0.2f,  -1.5f},
+    {-1.3f,  1.0f,  -1.5f},
+};
+
+struct TargetCamera {
+    vec3 pos;
+    vec3 target;
+    vec3 up;
+
+    mat4 ViewMatrix()
+    {
+        return lookAt(this->pos, this->target, this->up);
+    }
+};
+
+struct PlayerCamera {
+    vec3 pos;
+    vec3 up;
+
+    f32 pitch;
+    f32 yaw;
+    f32 roll;
+
+    vec3 FacingDirection()
+    {
+        vec3 direction = {
+            cos(radians(yaw)) * cos(radians(pitch)),
+            sin(radians(pitch)),
+            sin(radians(yaw)) * cos(radians(pitch)),
+        };
+        return normalize(direction);
+    }
+
+    mat4 ViewMatrix()
+    {
+        return lookAt(this->pos, this->pos + this->FacingDirection(), this->up);
+    }
+};
+
+PlayerCamera g_Camera = PlayerCamera{
+    .pos = vec3(0.0f, 0.0f, 3.0f),
+    .up  = vec3(0.0f, 1.0f, 0.0f),
+    .yaw = -90.0f,
+};
+
+f32 g_dt = 0.0f;
+f32 g_t  = 0.0f;
+
+GLuint g_ShaderProgram = 0;
 
 SHADER_FILE(VertexShader);
 SHADER_FILE(FragmentShader);
@@ -45,19 +122,6 @@ static void WindowResizeCallback(GLFWwindow* window, int width, int height)
 {
     (void)window;
     GL(glViewport(0, 0, width, height));
-}
-
-static void ProcessInput(GLFWwindow* window)
-{
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, true);
-    }
-    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-        BlendValue = BlendValue < 1.0f ? BlendValue + 0.01f : BlendValue;
-    }
-    if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-        BlendValue = BlendValue > 0.0f ? BlendValue - 0.01f : BlendValue;
-    }
 }
 
 static GLuint CompileShader(GLenum shader_type, const char* src, u32 len)
@@ -129,7 +193,7 @@ static GLuint LinkShaders(Ts... shaders)
 }
 
 template<typename T>
-static void SetUniform(GLuint program, const char* name, T value)
+static void SetUniform(GLuint program, const char* name, const T& value)
 {
     GLint location;
     GL(location = glGetUniformLocation(program, name));
@@ -185,8 +249,80 @@ static GLuint LoadTexture(const char* file_path)
     return texture;
 }
 
+static void ProcessKeyboardInput(GLFWwindow* window)
+{
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        glfwSetWindowShouldClose(window, true);
+    }
+
+    constexpr float move_speed = 2.5f;
+
+    vec3 dir_forward = g_Camera.FacingDirection();
+    vec3 dir_up      = g_Camera.up;
+    vec3 dir_right   = cross(dir_forward, dir_up);
+
+    vec3 dir_move = {};
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        dir_move += dir_forward;
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        dir_move -= dir_forward;
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        dir_move -= dir_right;
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        dir_move += dir_right;
+    }
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        dir_move += dir_up;
+    }
+    if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
+        dir_move -= dir_up;
+    }
+
+    if (length(dir_move) > 0.1f) {
+        g_Camera.pos += normalize(dir_move) * move_speed * g_dt;
+    }
+}
+
+static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
+{
+    float xpos = xpos_d;
+    float ypos = ypos_d;
+
+    static bool first_mouse = true;
+
+    static float xpos_prev = 0.0f;
+    static float ypos_prev = 0.0f;
+
+    if (first_mouse) {
+        xpos_prev   = xpos;
+        ypos_prev   = ypos;
+        first_mouse = false;
+    }
+
+    float xoffset = xpos - xpos_prev;
+    float yoffset = -(ypos - ypos_prev);
+    xpos_prev     = xpos;
+    ypos_prev     = ypos;
+
+    constexpr float sensitivity = 0.1f;
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    g_Camera.yaw += xoffset;
+    g_Camera.pitch = clamp(g_Camera.pitch + yoffset, -89.0f, 89.0f);
+}
+
 int main()
 {
+    constexpr u32 res_w        = 1280;
+    constexpr u32 res_h        = 720;
+    constexpr f32 aspect_ratio = (f32)res_w / (f32)res_h;
+    constexpr f32 fov          = 70.0f;
+
     stbi_set_flip_vertically_on_load(true);
 
     // glfw error callback
@@ -201,13 +337,16 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Learn OpenGL", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(res_w, res_h, "Learn OpenGL", nullptr, nullptr);
     if (window == nullptr) {
         glfwTerminate();
         ABORT("Failed to create GLFW window\n");
     }
 
     glfwMakeContextCurrent(window);
+
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetCursorPosCallback(window, ProcessMouseInput);
 
     // init glew
     if (glewInit() != GLEW_OK) {
@@ -216,7 +355,7 @@ int main()
     }
 
     // setup viewport and clear color
-    GL(glViewport(0, 0, 1280, 720));
+    GL(glViewport(0, 0, res_w, res_h));
     GL(glClearColor(0.2f, 0.3f, 0.3f, 1.0f));
 
     // resize window callback
@@ -226,7 +365,7 @@ int main()
     GLuint vertex_shader   = CompileShader(GL_VERTEX_SHADER, VertexShader.src, VertexShader.len);
     GLuint fragment_shader = CompileShader(GL_FRAGMENT_SHADER, FragmentShader.src, FragmentShader.len);
 
-    GLuint shader_program = LinkShaders(vertex_shader, fragment_shader);
+    g_ShaderProgram = LinkShaders(vertex_shader, fragment_shader);
 
     // setup VBO, VAO, EBO
     GLuint vao;
@@ -253,11 +392,8 @@ int main()
     GL(glVertexAttribOffset(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), offsetof(Vertex, pos)));
     GL(glEnableVertexAttribArray(0));
 
-    GL(glVertexAttribOffset(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), offsetof(Vertex, rgb)));
+    GL(glVertexAttribOffset(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), offsetof(Vertex, tex)));
     GL(glEnableVertexAttribArray(1));
-
-    GL(glVertexAttribOffset(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), offsetof(Vertex, tex)));
-    GL(glEnableVertexAttribArray(2));
 
     // wireframe
     // GL(glPolygonMode(GL_FRONT_AND_BACK, GL_LINE));
@@ -265,29 +401,26 @@ int main()
     GLuint tex_wall = LoadTexture("assets/wall.jpg");
     GLuint tex_face = LoadTexture("assets/face.png");
 
-    GL(glUseProgram(shader_program));
-    SetUniform(shader_program, "texture_0", 0);
-    SetUniform(shader_program, "texture_1", 1);
+    GL(glUseProgram(g_ShaderProgram));
+    SetUniform(g_ShaderProgram, "texture_0", 0);
+    SetUniform(g_ShaderProgram, "texture_1", 1);
+
+    mat4 proj = perspective(radians(fov), aspect_ratio, 0.1f, 100.0f);
+    SetUniform(g_ShaderProgram, "mat_proj", proj);
+
+    GL(glEnable(GL_DEPTH_TEST));
 
     // render loop
     while (!glfwWindowShouldClose(window)) {
         // handle user input
-        ProcessInput(window);
+        ProcessKeyboardInput(window);
 
         // clear the background
-        GL(glClear(GL_COLOR_BUFFER_BIT));
+        GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
         // draw
 
         // set uniform based on time
-        f32 time = glfwGetTime();
-
-        mat4 transform = mat4(1.0f);
-        transform      = rotate(transform, radians(time), vec3(0.0f, 0.0f, 1.0f));
-        transform      = scale(transform, vec3(0.5f, 0.5f, 0.5f));
-        SetUniform(shader_program, "transform", transform);
-
-        SetUniform(shader_program, "blend_amt", BlendValue);
 
         GL(glActiveTexture(GL_TEXTURE0));
         GL(glBindTexture(GL_TEXTURE_2D, tex_wall));
@@ -295,10 +428,24 @@ int main()
         GL(glActiveTexture(GL_TEXTURE1));
         GL(glBindTexture(GL_TEXTURE_2D, tex_face));
 
-        GL(glUseProgram(shader_program));
+        GL(glUseProgram(g_ShaderProgram));
         GL(glBindVertexArray(vao));
-        GL(glDrawElements(GL_TRIANGLES, lengthof(indices), GL_UNSIGNED_INT, 0));
-        // GL(glDrawArrays(GL_TRIANGLES, 0, lengthof(vertices)));
+
+        // update time
+        f32 time = glfwGetTime();
+        g_dt     = time - g_t;
+        g_t      = time;
+
+        SetUniform(g_ShaderProgram, "mat_view", g_Camera.ViewMatrix());
+
+        for (size_t ii = 0; ii < lengthof(positions); ii++) {
+            mat4 model = mat4(1.0f);
+            model      = translate(model, positions[ii]);
+
+            SetUniform(g_ShaderProgram, "mat_model", model);
+
+            GL(glDrawElements(GL_TRIANGLES, lengthof(indices) * 3, GL_UNSIGNED_INT, 0));
+        }
 
         // swap buffers, update window events
         glfwSwapBuffers(window);
