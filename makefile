@@ -29,6 +29,7 @@ BIN_DIR = bin
 # normal source files
 SRCS = $(SRC_DIR)/main.cpp
 SRCS += $(wildcard $(SRC_DIR)/common/*.cpp)
+SRCS += $(wildcard $(SRC_DIR)/utils/*.cpp)
 
 # platform source files
 # SRCS += $(wildcard $(SRC_DIR)/platform/windows/*.c)
@@ -65,7 +66,7 @@ obj/%.o: src/%.cpp
 
 obj/%.o: src/%.glsl
 	$(shell if not exist "$(@D)" mkdir "$(@D)")
-	$(OBJCOPY) $< $@ $(basename $(<F)) 64bit
+	$(OBJCOPY) $< $@ $(basename $(<F))_file 64bit
 
 sanitize:
 	$(shell if not exist "$(BIN_DIR)" mkdir "$(BIN_DIR)")

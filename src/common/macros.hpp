@@ -29,7 +29,7 @@
 #define is_array(a) static_assert_expr(!same_type((a), &(a)[0]))
 
 #define containerof(ptr, type, member) ((type*)((char*)ptr - offsetof(type, member)))
-#define lengthof(arr)                  (is_array(arr), sizeof(arr) / sizeof((arr)[0]))
+#define lengthof(arr)                  (std::size(arr))
 #define likely(x)                      __builtin_expect(!!(x), 1)
 #define unlikely(x)                    __builtin_expect(!!(x), 0)
 

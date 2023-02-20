@@ -10,6 +10,7 @@
 -Wno-gnu-zero-variadic-macro-arguments
 -Wno-gnu-anonymous-struct
 -Wno-deprecated-volatile
+-Wno-nested-anon-types
 
 -lopengl32
 -lglfw3

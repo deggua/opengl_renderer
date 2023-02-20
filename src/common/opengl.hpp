@@ -5,6 +5,8 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#include <common.hpp>
+
 #if RENDER_CHECK_OPENGL_CALLS
 static const char* glGetErrorString(GLenum err)
 {
@@ -47,8 +49,8 @@ static const char* glGetErrorString(GLenum err)
 #    define GL(...)                                                             \
         do {                                                                    \
             __VA_ARGS__;                                                        \
-            GLenum err_;                                                        \
-            if ((err_ = glGetError()) != GL_NO_ERROR) {                         \
+            GLenum err_ = glGetError();                                         \
+            if (err_ != GL_NO_ERROR) {                                          \
                 ABORT("OpenGL Error :: %s (%u)", glGetErrorString(err_), err_); \
             }                                                                   \
         } while (0)
@@ -56,3 +58,19 @@ static const char* glGetErrorString(GLenum err)
 #else
 #    define GL(...) __VA_ARGS__
 #endif
+
+struct ShaderFile {
+    const char* src;
+    const u32   len;
+};
+
+#define SHADER_FILE(name)                     \
+    extern "C" const char   name##_file[];    \
+    extern "C" const u32    name##_file_size; \
+    static const ShaderFile name = {name##_file, name##_file_size}
+
+static void
+glVertexAttribOffset(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, uintptr_t offset)
+{
+    glVertexAttribPointer(index, size, type, normalized, stride, (void*)offset);
+}
