@@ -5,7 +5,9 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
-#include <common.hpp>
+#include "common/config.hpp"
+#include "common/macros.hpp"
+#include "common/types.hpp"
 
 #if RENDER_CHECK_OPENGL_CALLS
 static const char* glGetErrorString(GLenum err)
@@ -68,9 +70,3 @@ struct ShaderFile {
     extern "C" const char   name##_file[];    \
     extern "C" const u32    name##_file_size; \
     static const ShaderFile name = {name##_file, name##_file_size}
-
-static void
-glVertexAttribOffset(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, uintptr_t offset)
-{
-    glVertexAttribPointer(index, size, type, normalized, stride, (void*)offset);
-}

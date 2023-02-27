@@ -30,6 +30,7 @@ BIN_DIR = bin
 SRCS = $(SRC_DIR)/main.cpp
 SRCS += $(wildcard $(SRC_DIR)/common/*.cpp)
 SRCS += $(wildcard $(SRC_DIR)/utils/*.cpp)
+SRCS += $(wildcard $(SRC_DIR)/gfx/*.cpp)
 
 # platform source files
 # SRCS += $(wildcard $(SRC_DIR)/platform/windows/*.c)
@@ -37,14 +38,17 @@ SRCS += $(wildcard $(SRC_DIR)/utils/*.cpp)
 # embedded data
 DATA = $(wildcard $(SRC_DIR)/shaders/*.glsl)
 
-OBJS = $(SRCS:src/%.cpp=obj/%.o)
-OBJS += $(DATA:src/%.glsl=obj/%.o)
+DEBUG_OBJS = $(SRCS:src/%.cpp=obj/debug/%.o)
+DEBUG_OBJS += $(DATA:src/%.glsl=obj/debug/%.o)
+
+RELEASE_OBJS = $(SRCS:src/%.cpp=obj/release/%.o)
+RELEASE_OBJS += $(DATA:src/%.glsl=obj/release/%.o)
 
 # output file names
-DEBUG_FNAME 	:= $(PROJ_NAME)-dbg.$(EXE_EXT)
-RELEASE_FNAME 	:= $(PROJ_NAME).$(EXE_EXT)
-SANITIZE_FNAME 	:= $(PROJ_NAME)-asan.$(EXE_EXT)
-PROFILE_FNAME 	:= $(PROJ_NAME)-gprof.$(EXE_EXT)
+DEBUG_FNAME 	:= debug.$(EXE_EXT)
+RELEASE_FNAME 	:= release.$(EXE_EXT)
+SANITIZE_FNAME 	:= asan.$(EXE_EXT)
+PROFILE_FNAME 	:= gprof.$(EXE_EXT)
 
 all: debug release
 
@@ -52,19 +56,27 @@ debug: $(BIN_DIR)/$(DEBUG_FNAME)
 
 release: $(BIN_DIR)/$(RELEASE_FNAME)
 
-$(BIN_DIR)/$(DEBUG_FNAME): $(OBJS)
+$(BIN_DIR)/$(DEBUG_FNAME): $(DEBUG_OBJS)
 	$(shell if not exist "$(@D)" mkdir "$(@D)")
-	$(CC) -o $(BIN_DIR)/$(DEBUG_FNAME) $(CC_FLAGS_DEBUG) $(OBJS)
+	$(CC) -o $(BIN_DIR)/$(DEBUG_FNAME) $(CC_FLAGS_DEBUG) $(DEBUG_OBJS)
 
-$(BIN_DIR)/$(RELEASE_FNAME): $(OBJS)
+$(BIN_DIR)/$(RELEASE_FNAME): $(RELEASE_OBJS)
 	$(shell if not exist "$(@D)" mkdir "$(@D)")
-	$(CC) -o $(BIN_DIR)/$(RELEASE_FNAME) $(CC_FLAGS_RELEASE) $(OBJS)
+	$(CC) -o $(BIN_DIR)/$(RELEASE_FNAME) $(CC_FLAGS_RELEASE) $(RELEASE_OBJS)
 
-obj/%.o: src/%.cpp
+obj/release/%.o: src/%.cpp
 	$(shell if not exist "$(@D)" mkdir "$(@D)")
 	$(CC) -o $@ $(CC_FLAGS_RELEASE) -c $<
 
-obj/%.o: src/%.glsl
+obj/release/%.o: src/%.glsl
+	$(shell if not exist "$(@D)" mkdir "$(@D)")
+	$(OBJCOPY) $< $@ $(basename $(<F))_file 64bit
+
+obj/debug/%.o: src/%.cpp
+	$(shell if not exist "$(@D)" mkdir "$(@D)")
+	$(CC) -o $@ $(CC_FLAGS_DEBUG) -c $<
+
+obj/debug/%.o: src/%.glsl
 	$(shell if not exist "$(@D)" mkdir "$(@D)")
 	$(OBJCOPY) $< $@ $(basename $(<F))_file 64bit
 

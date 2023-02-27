@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <string>
+#include <vector>
+
 #define GLFW_INCLUDE_NONE
 
 #include <GL/glew.h>
@@ -13,241 +16,66 @@
 
 #include "common.hpp"
 #include "common/opengl.hpp"
+#include "gfx/opengl.hpp"
+#include "gfx/renderer.hpp"
 
-using namespace glm;
+static const std::vector<Vertex> vertices = {
+  // positions            // normals           // texture coords
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
+    { {0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
+    {  {0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
+    {  {0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
+    { {-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
 
-struct Vertex {
-    vec3 pos;
-    vec2 tex;
-};
+    { {-0.5f, -0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+    {  {0.5f, -0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+    {   {0.5f, 0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {   {0.5f, 0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {  {-0.5f, 0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    { {-0.5f, -0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
 
-static const Vertex vertices[] = {
-    {.pos = {0.0f, 0.0f, 0.0f}, .tex = {0.0f, 0.0f}},
-    {.pos = {1.0f, 0.0f, 0.0f}, .tex = {1.0f, 0.0f}},
-    {.pos = {0.0f, 1.0f, 0.0f}, .tex = {0.0f, 1.0f}},
-    {.pos = {1.0f, 1.0f, 0.0f}, .tex = {1.0f, 1.0f}},
-    {.pos = {0.0f, 0.0f, 1.0f}, .tex = {0.0f, 0.0f}},
-    {.pos = {1.0f, 0.0f, 1.0f}, .tex = {1.0f, 0.0f}},
-    {.pos = {0.0f, 1.0f, 1.0f}, .tex = {0.0f, 1.0f}},
-    {.pos = {1.0f, 1.0f, 1.0f}, .tex = {1.0f, 1.0f}},
-};
+    {  {-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    { {-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    { {-0.5f, -0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {  {-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
 
-struct Triangle {
-    GLuint idx[3];
-};
+    {   {0.5f, 0.5f, 0.5f},  {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {  {0.5f, 0.5f, -0.5f},  {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+    { {0.5f, -0.5f, -0.5f},  {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    { {0.5f, -0.5f, -0.5f},  {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {  {0.5f, -0.5f, 0.5f},  {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {   {0.5f, 0.5f, 0.5f},  {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
 
-static const Triangle indices[] = {
-    {.idx = {1, 0, 3}}, // back
-    {.idx = {0, 2, 3}}, // back
-    {.idx = {4, 5, 6}}, // front
-    {.idx = {5, 7, 6}}, // front
-    {.idx = {6, 7, 3}}, // top
-    {.idx = {6, 3, 2}}, // top
-    {.idx = {0, 5, 4}}, // bottom
-    {.idx = {0, 1, 5}}, // bottom
-    {.idx = {0, 6, 2}}, // left
-    {.idx = {0, 4, 6}}, // left
-    {.idx = {5, 3, 7}}, // right
-    {.idx = {5, 1, 3}}, // right
-};
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
+    { {0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
+    {  {0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+    {  {0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+    { {-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
 
-static const vec3 positions[] = {
-    { 0.0f,  0.0f,   0.0f},
-    { 2.0f,  5.0f, -15.0f},
-    {-1.5f, -2.2f,  -2.5f},
-    {-3.8f, -2.0f, -12.3f},
-    { 2.4f, -0.4f,  -3.5f},
-    {-1.7f,  3.0f,  -7.5f},
-    { 1.3f, -2.0f,  -2.5f},
-    { 1.5f,  2.0f,  -2.5f},
-    { 1.5f,  0.2f,  -1.5f},
-    {-1.3f,  1.0f,  -1.5f},
-};
+    { {-0.5f, 0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {  {0.5f, 0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+    {   {0.5f, 0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
 
-struct TargetCamera {
-    vec3 pos;
-    vec3 target;
-    vec3 up;
-
-    mat4 ViewMatrix()
-    {
-        return lookAt(this->pos, this->target, this->up);
-    }
-};
-
-struct PlayerCamera {
-    vec3 pos;
-    vec3 up;
-
-    f32 pitch;
-    f32 yaw;
-    f32 roll;
-
-    vec3 FacingDirection()
-    {
-        vec3 direction = {
-            cos(radians(yaw)) * cos(radians(pitch)),
-            sin(radians(pitch)),
-            sin(radians(yaw)) * cos(radians(pitch)),
-        };
-        return normalize(direction);
-    }
-
-    mat4 ViewMatrix()
-    {
-        return lookAt(this->pos, this->pos + this->FacingDirection(), this->up);
-    }
+    {   {0.5f, 0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {  {-0.5f, 0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    { {-0.5f, 0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
 };
 
 PlayerCamera g_Camera = PlayerCamera{
-    .pos = vec3(0.0f, 0.0f, 3.0f),
-    .up  = vec3(0.0f, 1.0f, 0.0f),
+    .pos = glm::vec3(0.0f, 0.0f, 3.0f),
+    .up  = glm::vec3(0.0f, 1.0f, 0.0f),
     .yaw = -90.0f,
 };
 
 f32 g_dt = 0.0f;
 f32 g_t  = 0.0f;
 
-GLuint g_ShaderProgram = 0;
-
-SHADER_FILE(VertexShader);
-SHADER_FILE(FragmentShader);
-
-static void ErrorHandlerCallback(int error_code, const char* description)
-{
-    ABORT("GLFW Error :: %s (%d)", description, error_code);
-}
-
-static void WindowResizeCallback(GLFWwindow* window, int width, int height)
-{
-    (void)window;
-    GL(glViewport(0, 0, width, height));
-}
-
-static GLuint CompileShader(GLenum shader_type, const char* src, u32 len)
-{
-    ASSERT(len < (u32)INT32_MAX);
-    i32 i_len = len;
-
-    GLuint shader;
-    GL(shader = glCreateShader(shader_type));
-    GL(glShaderSource(shader, 1, &src, &i_len));
-    GL(glCompileShader(shader));
-
-    // check vertex shader compile status
-    if constexpr (RENDER_CHECK_SHADER_COMPILE) {
-        GLint success;
-        char  info_log[RENDER_SHADER_LOG_SIZE];
-        GL(glGetShaderiv(shader, GL_COMPILE_STATUS, &success));
-
-        if (!success) {
-            GL(glGetShaderInfoLog(shader, sizeof(info_log), nullptr, info_log));
-            ABORT(
-                "Compilation of shader failed:\n"
-                "Reason: %s\n",
-                info_log);
-        }
-    }
-
-    return shader;
-}
-
-template<class T, class... Ts>
-static void AttachShaders(GLuint program, T first_shader, Ts... shaders)
-{
-    GL(glAttachShader(program, first_shader));
-    if constexpr (sizeof...(shaders) > 0) {
-        AttachShaders(program, shaders...);
-    }
-}
-
-template<class... Ts>
-static GLuint LinkShaders(Ts... shaders)
-{
-    // create program
-    GLuint shader_program;
-    GL(shader_program = glCreateProgram());
-
-    // attach shaders to the program
-    AttachShaders(shader_program, shaders...);
-
-    // link shaders
-    GL(glLinkProgram(shader_program));
-
-    // check linker result
-    if constexpr (RENDER_CHECK_SHADER_COMPILE) {
-        GLint success;
-        char  info_log[RENDER_SHADER_LOG_SIZE];
-        GL(glGetProgramiv(shader_program, GL_LINK_STATUS, &success));
-
-        if (!success) {
-            GL(glGetProgramInfoLog(shader_program, sizeof(info_log), nullptr, info_log));
-            ABORT(
-                "Linking of shader program failed:\n"
-                "Reason: %s\n",
-                info_log);
-        }
-    }
-
-    return shader_program;
-}
-
-template<typename T>
-static void SetUniform(GLuint program, const char* name, const T& value)
-{
-    GLint location;
-    GL(location = glGetUniformLocation(program, name));
-
-    if constexpr (std::is_same_v<T, bool>) {
-        GL(glUniform1i(location, (GLint)value));
-    } else if constexpr (std::is_same_v<T, GLint>) {
-        GL(glUniform1i(location, value));
-    } else if constexpr (std::is_same_v<T, GLuint>) {
-        GL(glUniform1ui(location, value));
-    } else if constexpr (std::is_same_v<T, f32>) {
-        GL(glUniform1f(location, value));
-    } else if constexpr (std::is_same_v<T, vec2>) {
-        GL(glUniform2f(location, value.x, value.y));
-    } else if constexpr (std::is_same_v<T, vec3>) {
-        GL(glUniform3f(location, value.x, value.y, value.z));
-    } else if constexpr (std::is_same_v<T, vec4>) {
-        GL(glUniform4f(location, value.x, value.y, value.z, value.w));
-    } else if constexpr (std::is_same_v<T, mat4>) {
-        GL(glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value)));
-    } else {
-        // TODO: is there a better way to do this?
-        static_assert(!std::is_same_v<T, T>, "No associated OpenGL function for templated type T");
-    }
-}
-
-static GLuint LoadTexture(const char* file_path)
-{
-    GLuint texture;
-
-    GL(glGenTextures(1, &texture));
-    GL(glBindTexture(GL_TEXTURE_2D, texture));
-
-    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
-    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
-    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
-    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
-
-    int width, height, num_channels;
-    u8* image_data = stbi_load(file_path, &width, &height, &num_channels, 0);
-
-    if (!image_data) {
-        ABORT("Failed to load texture: %s", file_path);
-    }
-
-    GLenum color_fmt = (num_channels == 3 ? GL_RGB : GL_RGBA);
-
-    GL(glTexImage2D(GL_TEXTURE_2D, 0, color_fmt, width, height, 0, color_fmt, GL_UNSIGNED_BYTE, image_data));
-    GL(glGenerateMipmap(GL_TEXTURE_2D));
-
-    stbi_image_free(image_data);
-
-    return texture;
-}
+u32 g_res_w = 1280;
+u32 g_res_h = 720;
 
 static void ProcessKeyboardInput(GLFWwindow* window)
 {
@@ -257,11 +85,11 @@ static void ProcessKeyboardInput(GLFWwindow* window)
 
     constexpr float move_speed = 2.5f;
 
-    vec3 dir_forward = g_Camera.FacingDirection();
-    vec3 dir_up      = g_Camera.up;
-    vec3 dir_right   = cross(dir_forward, dir_up);
+    glm::vec3 dir_forward = g_Camera.FacingDirection();
+    glm::vec3 dir_up      = g_Camera.up;
+    glm::vec3 dir_right   = cross(dir_forward, dir_up);
 
-    vec3 dir_move = {};
+    glm::vec3 dir_move = {};
 
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
         dir_move += dir_forward;
@@ -289,6 +117,8 @@ static void ProcessKeyboardInput(GLFWwindow* window)
 
 static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
 {
+    (void)window;
+
     float xpos = xpos_d;
     float ypos = ypos_d;
 
@@ -313,22 +143,36 @@ static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
     yoffset *= sensitivity;
 
     g_Camera.yaw += xoffset;
-    g_Camera.pitch = clamp(g_Camera.pitch + yoffset, -89.0f, 89.0f);
+    g_Camera.pitch = glm::clamp(g_Camera.pitch + yoffset, -89.0f, 89.0f);
+}
+
+static void ErrorHandlerCallback(int error_code, const char* description)
+{
+    ABORT("GLFW Error :: %s (%d)", description, error_code);
+}
+
+static void WindowResizeCallback(GLFWwindow* window, int width, int height)
+{
+    (void)window;
+    g_res_w = width;
+    g_res_h = height;
+}
+
+static void UpdateTime()
+{
+    f32 time = glfwGetTime();
+    g_dt     = time - g_t;
+    g_t      = time;
 }
 
 int main()
 {
-    constexpr u32 res_w        = 1280;
-    constexpr u32 res_h        = 720;
-    constexpr f32 aspect_ratio = (f32)res_w / (f32)res_h;
-    constexpr f32 fov          = 70.0f;
+    constexpr f32 fov = 70.0f;
 
     stbi_set_flip_vertically_on_load(true);
 
-    // glfw error callback
     glfwSetErrorCallback(ErrorHandlerCallback);
 
-    // init glfw and setup window
     if (glfwInit() != GLFW_TRUE) {
         ABORT("Failed to initialize GLFW\n");
     }
@@ -337,7 +181,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(res_w, res_h, "Learn OpenGL", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(g_res_w, g_res_h, "Learn OpenGL", nullptr, nullptr);
     if (window == nullptr) {
         glfwTerminate();
         ABORT("Failed to create GLFW window\n");
@@ -348,106 +192,92 @@ int main()
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, ProcessMouseInput);
 
-    // init glew
     if (glewInit() != GLEW_OK) {
         glfwTerminate();
         ABORT("Failed to initialize GLEW\n");
     }
 
-    // setup viewport and clear color
-    GL(glViewport(0, 0, res_w, res_h));
-    GL(glClearColor(0.2f, 0.3f, 0.3f, 1.0f));
-
-    // resize window callback
     glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
 
-    // setup shaders
-    GLuint vertex_shader   = CompileShader(GL_VERTEX_SHADER, VertexShader.src, VertexShader.len);
-    GLuint fragment_shader = CompileShader(GL_FRAGMENT_SHADER, FragmentShader.src, FragmentShader.len);
+    Renderer renderer = Renderer();
 
-    g_ShaderProgram = LinkShaders(vertex_shader, fragment_shader);
+    constexpr glm::vec3 rgb_black = {0.0f, 0.0f, 0.0f};
+    constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
 
-    // setup VBO, VAO, EBO
-    GLuint vao;
-    GL(glGenVertexArrays(1, &vao));
+    renderer.Set_Resolution(g_res_w, g_res_h);
+    renderer.Clear(rgb_black);
 
-    GLuint vbo;
-    GL(glGenBuffers(1, &vbo));
+    // TODO: this feels clunky
+    Texture2D box_diffuse_map  = Texture2D("assets/container.png");
+    Texture2D box_specular_map = Texture2D("assets/container_specular.png");
+    Material  box_mat          = Material{box_diffuse_map, box_specular_map, 32.0f};
 
-    GLuint ebo;
-    GL(glGenBuffers(1, &ebo));
+    // TODO: how should we load meshes?
+    Mesh box_mesh = Mesh(vertices);
 
-    // the following buffer binding will be attached to the VAO
-    GL(glBindVertexArray(vao));
+    // TODO: how should we construct light sources?
+    Light ambient_light = CreateLight_Ambient(rgb_white, 0.1f);
+    Light point_light   = CreateLight_Point({2.0f, 2.0f, 2.0f}, 40.0f, rgb_white, 1.0f);
+    Light sun_light     = CreateLight_Sun({0.0f, -1.0f, 0.0f}, rgb_white, 1.0f);
 
-    // bind indices
-    GL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo));
-    GL(glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW));
+    struct Object {
+        glm::vec3 pos;
+        Mesh&     mesh;
+        Material& material;
+    };
 
-    // bind vertices
-    GL(glBindBuffer(GL_ARRAY_BUFFER, vbo));
-    GL(glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW));
+    Object objs[] = {
+        {{0.0f, 0.0f, 0.0f}, box_mesh, box_mat},
+    };
 
-    // set vertex attribute info
-    GL(glVertexAttribOffset(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), offsetof(Vertex, pos)));
-    GL(glEnableVertexAttribArray(0));
+    Light lights[] = {
+        sun_light,
+        ambient_light,
+        point_light,
+    };
 
-    GL(glVertexAttribOffset(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), offsetof(Vertex, tex)));
-    GL(glEnableVertexAttribArray(1));
+    renderer.Enable(GL_DEPTH_TEST);
 
-    // wireframe
-    // GL(glPolygonMode(GL_FRONT_AND_BACK, GL_LINE));
+#if 0
+    GL(glEnable(GL_CULL_FACE));
+    GL(glCullFace(GL_BACK));
+#endif
 
-    GLuint tex_wall = LoadTexture("assets/wall.jpg");
-    GLuint tex_face = LoadTexture("assets/face.png");
+    GL(glEnable(GL_BLEND));
+    GL(glBlendEquation(GL_FUNC_ADD));
+    GL(glBlendFunc(GL_ONE, GL_ONE));
+    GL(glDepthFunc(GL_LEQUAL));
 
-    GL(glUseProgram(g_ShaderProgram));
-    SetUniform(g_ShaderProgram, "texture_0", 0);
-    SetUniform(g_ShaderProgram, "texture_1", 1);
-
-    mat4 proj = perspective(radians(fov), aspect_ratio, 0.1f, 100.0f);
-    SetUniform(g_ShaderProgram, "mat_proj", proj);
-
-    GL(glEnable(GL_DEPTH_TEST));
-
-    // render loop
     while (!glfwWindowShouldClose(window)) {
-        // handle user input
+        UpdateTime();
         ProcessKeyboardInput(window);
 
-        // clear the background
-        GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+        renderer.Clear(rgb_black);
 
-        // draw
+        // TODO: do this here? what about resolution? maybe we need a boolean to do this only if the resolution changed
+        // update screen (if resolution changed)
+        glm::mat4 mtx_screen = glm::perspective(glm::radians(fov), (f32)g_res_w / (f32)g_res_h, 0.1f, 100.0f);
+        renderer.Set_ScreenMatrix(mtx_screen);
 
-        // set uniform based on time
+        // update camera
+        glm::mat4 mtx_view = g_Camera.ViewMatrix();
+        renderer.Set_ViewMatrix(mtx_view);
+        renderer.Set_ViewPosition(g_Camera.pos);
 
-        GL(glActiveTexture(GL_TEXTURE0));
-        GL(glBindTexture(GL_TEXTURE_2D, tex_wall));
+        for (const auto& light : lights) {
+            for (const auto& obj : objs) {
+                glm::mat4 mtx_world = glm::mat4(1.0f);
+                mtx_world           = glm::translate(mtx_world, obj.pos);
+                renderer.Set_WorldMatrix(mtx_world);
 
-        GL(glActiveTexture(GL_TEXTURE1));
-        GL(glBindTexture(GL_TEXTURE_2D, tex_face));
+                glm::mat4 mtx_normal = glm::mat4(1.0f);
+                mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
+                renderer.Set_NormalMatrix(mtx_normal);
 
-        GL(glUseProgram(g_ShaderProgram));
-        GL(glBindVertexArray(vao));
-
-        // update time
-        f32 time = glfwGetTime();
-        g_dt     = time - g_t;
-        g_t      = time;
-
-        SetUniform(g_ShaderProgram, "mat_view", g_Camera.ViewMatrix());
-
-        for (size_t ii = 0; ii < lengthof(positions); ii++) {
-            mat4 model = mat4(1.0f);
-            model      = translate(model, positions[ii]);
-
-            SetUniform(g_ShaderProgram, "mat_model", model);
-
-            GL(glDrawElements(GL_TRIANGLES, lengthof(indices) * 3, GL_UNSIGNED_INT, 0));
+                renderer.Render(obj.mesh, obj.material, light);
+            }
         }
 
-        // swap buffers, update window events
         glfwSwapBuffers(window);
         glfwPollEvents();
     }

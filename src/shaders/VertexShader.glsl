@@ -1,16 +1,26 @@
 #version 330 core
 
-layout(location = 0) in vec3 vtx_pos;
-layout(location = 1) in vec2 vtx_tex;
+// in
+layout(location = 0) in vec3 g_vtx_pos;
+layout(location = 1) in vec3 g_vtx_norm;
+layout(location = 2) in vec2 g_vtx_tex;
 
-out vec2 tex_coord;
+// out
+out vec2 g_frag_tex_coord;
+out vec3 g_frag_normal;
+out vec3 g_frag_pos;
 
-uniform mat4 mat_model; // obj    -> world
-uniform mat4 mat_view;  // world  -> camera
-uniform mat4 mat_proj;  // camera -> screen
+// uniform
+uniform mat3 g_mtx_normal; // normal -> world
+uniform mat4 g_mtx_world;  // obj    -> world
+uniform mat4 g_mtx_view;   // world  -> view
+uniform mat4 g_mtx_screen; // view   -> screen
 
 void main()
 {
-    gl_Position = mat_proj * mat_view * mat_model * vec4(vtx_pos, 1.0);
-    tex_coord   = vtx_tex;
+    g_frag_pos       = vec3(g_mtx_world * vec4(g_vtx_pos, 1.0));
+    g_frag_normal    = g_mtx_normal * g_vtx_norm;
+    g_frag_tex_coord = g_vtx_tex;
+
+    gl_Position = g_mtx_screen * g_mtx_view * g_mtx_world * vec4(g_vtx_pos, 1.0);
 }
