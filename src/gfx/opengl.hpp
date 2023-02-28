@@ -5,44 +5,39 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <string>
+#include <vector>
 
 #include "common.hpp"
 
-struct OpenGL_Handle {
-    GLuint handle = 0;
+template<typename T>
+struct Handle {
+    T handle = 0;
 
-    OpenGL_Handle() = default;
+    Handle() = default;
 
-    OpenGL_Handle(GLuint hand)
+    Handle(T hand)
     {
         this->handle = hand;
     }
 
-    OpenGL_Handle(GLint hand)
-    {
-        ASSERT(hand >= 0);
-        this->handle = hand;
-    }
-
-    explicit operator GLuint() const
+    explicit operator T() const
     {
         return this->handle;
     }
-
-    explicit operator GLint() const
-    {
-        GLint ret = (GLint)this->handle;
-        ASSERT(ret >= 0);
-        return ret;
-    }
 };
 
-struct Uniform : OpenGL_Handle {
-    using OpenGL_Handle::OpenGL_Handle;
+struct Uniform : Handle<GLint> {
+    using Handle<GLint>::Handle;
+    std::string name;
+
+    Uniform(const char* name, GLint location);
 };
 
-struct Texture2D : OpenGL_Handle {
-    using OpenGL_Handle::OpenGL_Handle;
+struct Texture2D : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
+
+    static Handle<GLuint> Bound;
 
     Texture2D(const char* file_path);
     Texture2D(FILE* fd);
@@ -53,26 +48,63 @@ private:
     void LoadTexture(FILE* fd);
 };
 
-struct Shader : OpenGL_Handle {
-    using OpenGL_Handle::OpenGL_Handle;
+struct Shader : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
 };
 
-struct ShaderProgram : OpenGL_Handle {
-    using OpenGL_Handle::OpenGL_Handle;
+struct ShaderProgram : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
+
+    static Handle<GLuint> Bound;
+
+    std::vector<Uniform> uniforms;
 
     void UseProgram() const
     {
+        if (Bound.handle == this->handle) {
+            return;
+        }
+
         GL(glUseProgram(GLuint(*this)));
+        ShaderProgram::Bound = this->handle;
     }
 
+    // TODO:
+#if 0
     template<typename T>
-    void SetUniform(const char* name, const T& value) const
+    T GetUniform(const char* name)
     {
-        // TODO: retrieving the uniform's position and changing the shader program every time is
-        // ineffecient, we should cache the location and avoid calling glUseProgram here
+
+    }
+#endif
+
+    template<typename T>
+    void SetUniform(const char* name, const T& value)
+    {
+        bool  location_known = false;
         GLint location;
-        GL(location = glGetUniformLocation(GLuint(*this), name));
-        GL(glUseProgram(GLuint(*this)));
+
+        // see if it's in the vector of known uniforms
+        for (const auto& iter : this->uniforms) {
+            if (iter.name == name) {
+                location       = iter.handle;
+                location_known = true;
+                break;
+            }
+        }
+
+        // if the location is unknown add the mapping to the vector
+        if (!location_known) {
+            GL(location = glGetUniformLocation(GLuint(*this), name));
+            if (location < 0) {
+                // TODO: this seems to happen even for valid uniforms, might need to look into this
+                return;
+            }
+
+            this->uniforms.emplace_back(Uniform(name, location));
+        }
+
+        this->UseProgram();
 
         if constexpr (std::is_same_v<T, bool>) {
             GL(glUniform1i(location, (GLint)value));
@@ -99,33 +131,54 @@ struct ShaderProgram : OpenGL_Handle {
     }
 };
 
-struct VAO : OpenGL_Handle {
-    using OpenGL_Handle::OpenGL_Handle;
+struct VAO : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
 
     VAO();
     ~VAO();
 
+    VAO(const VAO&)            = delete;
+    VAO& operator=(const VAO&) = delete;
+
+    VAO(VAO&&)            = default;
+    VAO& operator=(VAO&&) = default;
+
     void Bind() const;
+    void Unbind() const;
     void SetAttribute(GLuint index, GLint components, GLenum type, GLsizei stride, uintptr_t offset);
 };
 
-struct VBO : OpenGL_Handle {
-    using OpenGL_Handle::OpenGL_Handle;
+struct VBO : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
 
     VBO();
     ~VBO();
 
+    VBO(const VBO&)            = delete;
+    VBO& operator=(const VBO&) = delete;
+
+    VBO(VBO&&)            = default;
+    VBO& operator=(VBO&&) = default;
+
     void Bind() const;
+    void Unbind() const;
     void LoadData(size_t size, const void* data, GLenum usage) const;
 };
 
-struct EBO : OpenGL_Handle {
-    using OpenGL_Handle::OpenGL_Handle;
+struct EBO : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
 
     EBO();
     ~EBO();
 
+    EBO(const EBO&)            = delete;
+    EBO& operator=(const EBO&) = delete;
+
+    EBO(EBO&&)            = default;
+    EBO& operator=(EBO&&) = default;
+
     void Bind() const;
+    void Unbind() const;
     void LoadData(size_t size, const void* data, GLenum usage) const;
 };
 

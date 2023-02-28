@@ -164,45 +164,13 @@ static void UpdateTime()
     g_t      = time;
 }
 
-int main()
+void RenderLoop(GLFWwindow* window)
 {
-    constexpr f32 fov = 70.0f;
-
-    stbi_set_flip_vertically_on_load(true);
-
-    glfwSetErrorCallback(ErrorHandlerCallback);
-
-    if (glfwInit() != GLFW_TRUE) {
-        ABORT("Failed to initialize GLFW\n");
-    }
-
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    GLFWwindow* window = glfwCreateWindow(g_res_w, g_res_h, "Learn OpenGL", nullptr, nullptr);
-    if (window == nullptr) {
-        glfwTerminate();
-        ABORT("Failed to create GLFW window\n");
-    }
-
-    glfwMakeContextCurrent(window);
-
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    glfwSetCursorPosCallback(window, ProcessMouseInput);
-
-    if (glewInit() != GLEW_OK) {
-        glfwTerminate();
-        ABORT("Failed to initialize GLEW\n");
-    }
-
-    glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
-
-    Renderer renderer = Renderer();
-
+    constexpr f32       fov       = 70.0f;
     constexpr glm::vec3 rgb_black = {0.0f, 0.0f, 0.0f};
     constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
 
+    Renderer renderer = Renderer();
     renderer.Set_Resolution(g_res_w, g_res_h);
     renderer.Clear(rgb_black);
 
@@ -215,9 +183,9 @@ int main()
     Mesh box_mesh = Mesh(vertices);
 
     // TODO: how should we construct light sources?
-    Light ambient_light = CreateLight_Ambient(rgb_white, 0.1f);
-    Light point_light   = CreateLight_Point({2.0f, 2.0f, 2.0f}, 40.0f, rgb_white, 1.0f);
-    Light sun_light     = CreateLight_Sun({0.0f, -1.0f, 0.0f}, rgb_white, 1.0f);
+    Light ambient_light = Light::Ambient(rgb_white, 0.1f);
+    Light point_light   = Light::Point({2.0f, 2.0f, 2.0f}, 40.0f, rgb_white, 1.0f);
+    Light sun_light     = Light::Sun({0.0f, -1.0f, 0.0f}, rgb_white, 1.0f);
 
     struct Object {
         glm::vec3 pos;
@@ -263,6 +231,10 @@ int main()
         renderer.Set_ViewMatrix(mtx_view);
         renderer.Set_ViewPosition(g_Camera.pos);
 
+        // TODO: we should iterate the light types in order to reduce the amount of program switching
+        // not sure how that should be encapsulated however
+        // TODO: it's also more efficient to render objects with the same texture/mesh together as well
+        // not sure how that could be tracked either
         for (const auto& light : lights) {
             for (const auto& obj : objs) {
                 glm::mat4 mtx_world = glm::mat4(1.0f);
@@ -280,6 +252,41 @@ int main()
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+}
+
+int main()
+{
+    stbi_set_flip_vertically_on_load(true);
+
+    glfwSetErrorCallback(ErrorHandlerCallback);
+
+    if (glfwInit() != GLFW_TRUE) {
+        ABORT("Failed to initialize GLFW\n");
+    }
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    GLFWwindow* window = glfwCreateWindow(g_res_w, g_res_h, "Learn OpenGL", nullptr, nullptr);
+    if (window == nullptr) {
+        glfwTerminate();
+        ABORT("Failed to create GLFW window\n");
+    }
+
+    glfwMakeContextCurrent(window);
+
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetCursorPosCallback(window, ProcessMouseInput);
+
+    if (glewInit() != GLEW_OK) {
+        glfwTerminate();
+        ABORT("Failed to initialize GLEW\n");
+    }
+
+    glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
+
+    RenderLoop(window);
 
     glfwTerminate();
     return EXIT_SUCCESS;

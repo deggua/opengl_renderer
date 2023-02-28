@@ -109,7 +109,7 @@ static DistanceFalloff ComputeFalloffParameters(f32 range)
     return DistanceFalloff{.k = k};
 }
 
-Light CreateLight_Ambient(glm::vec3 color, f32 intensity)
+Light Light::Ambient(glm::vec3 color, f32 intensity)
 {
     Light light = {
         .type = LightType::Ambient,
@@ -122,7 +122,7 @@ Light CreateLight_Ambient(glm::vec3 color, f32 intensity)
     return light;
 }
 
-Light CreateLight_Sun(glm::vec3 dir, glm::vec3 color, f32 intensity)
+Light Light::Sun(glm::vec3 dir, glm::vec3 color, f32 intensity)
 {
     Light light = {
         .type = LightType::Sun,
@@ -136,7 +136,7 @@ Light CreateLight_Sun(glm::vec3 dir, glm::vec3 color, f32 intensity)
     return light;
 }
 
-Light CreateLight_Spot(
+Light Light::Spot(
     glm::vec3 pos,
     glm::vec3 dir,
     f32       range,
@@ -161,7 +161,7 @@ Light CreateLight_Spot(
     return light;
 }
 
-Light CreateLight_Point(glm::vec3 pos, f32 range, glm::vec3 color, f32 intensity)
+Light Light::Point(glm::vec3 pos, f32 range, glm::vec3 color, f32 intensity)
 {
     Light light = {
         .type = LightType::Point,
@@ -179,18 +179,17 @@ Light CreateLight_Point(glm::vec3 pos, f32 range, glm::vec3 color, f32 intensity
 // Mesh
 Mesh::Mesh(const std::vector<Vertex>& vertices)
 {
-    this->vao.Bind();
-
-    this->vbo.Bind();
     this->vbo.LoadData(vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
 
-    this->ebo.Bind();
-    // TODO: should we do anything for the EBO if we don't use it?
-    // TODO: maybe we should have separate mesh types?
-
+    this->vbo.Bind();
     this->vao.SetAttribute(0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, pos));
     this->vao.SetAttribute(1, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, norm));
     this->vao.SetAttribute(2, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
+
+    this->vao.Bind();
+    this->ebo.LoadData(0, NULL, GL_STATIC_DRAW);
+    // TODO: should we do anything for the EBO if we don't use it?
+    // TODO: maybe we should have separate mesh types?
 
     this->len = vertices.size();
 }
@@ -248,7 +247,7 @@ void Renderer::Set_Resolution(u32 width, u32 height)
 void Renderer::Set_NormalMatrix(const glm::mat3& mtx_normal)
 {
     // TODO: use uniform buffer object
-    for (const ShaderProgram& sp : this->shaders) {
+    for (ShaderProgram& sp : this->shaders) {
         sp.UseProgram();
         sp.SetUniform("g_mtx_normal", mtx_normal);
     }
@@ -257,7 +256,7 @@ void Renderer::Set_NormalMatrix(const glm::mat3& mtx_normal)
 void Renderer::Set_WorldMatrix(const glm::mat4& mtx_world)
 {
     // TODO: use uniform buffer object
-    for (const ShaderProgram& sp : this->shaders) {
+    for (ShaderProgram& sp : this->shaders) {
         sp.UseProgram();
         sp.SetUniform("g_mtx_world", mtx_world);
     }
@@ -266,7 +265,7 @@ void Renderer::Set_WorldMatrix(const glm::mat4& mtx_world)
 void Renderer::Set_ViewMatrix(const glm::mat4& mtx_view)
 {
     // TODO: use uniform buffer object
-    for (const ShaderProgram& sp : this->shaders) {
+    for (ShaderProgram& sp : this->shaders) {
         sp.UseProgram();
         sp.SetUniform("g_mtx_view", mtx_view);
     }
@@ -275,7 +274,7 @@ void Renderer::Set_ViewMatrix(const glm::mat4& mtx_view)
 void Renderer::Set_ScreenMatrix(const glm::mat4& mtx_screen)
 {
     // TODO: use uniform buffer object
-    for (const ShaderProgram& sp : this->shaders) {
+    for (ShaderProgram& sp : this->shaders) {
         sp.UseProgram();
         sp.SetUniform("g_mtx_screen", mtx_screen);
     }
@@ -284,7 +283,7 @@ void Renderer::Set_ScreenMatrix(const glm::mat4& mtx_screen)
 void Renderer::Set_ViewPosition(const glm::vec3& view_pos)
 {
     // TODO: use uniform buffer object
-    for (const ShaderProgram& sp : this->shaders) {
+    for (ShaderProgram& sp : this->shaders) {
         sp.UseProgram();
         sp.SetUniform("g_view_pos", view_pos);
     }
@@ -297,62 +296,68 @@ void Renderer::Enable(GLenum setting)
 
 void Renderer::Clear(const glm::vec3& color)
 {
+    // TODO: this doesn't need to be set with every clear, we could track its value
     GL(glClearColor(color.r, color.g, color.b, 1.0f));
     GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 }
 
+// TODO: we should store the current program in the renderer
 void Renderer::Render(const Mesh& mesh, const Material& mat, const Light& light)
 {
     // TODO: we don't really need to send the cam_pos + view matrix every render call
 
-    ShaderProgram sp_cur;
+    ShaderProgram* sp_cur = nullptr;
 
     // set lighting parameters
     switch (light.type) {
         case LightType::Ambient: {
-            sp_cur = this->shaders[(size_t)Renderer::ShaderType::Ambient];
-            sp_cur.UseProgram();
+            sp_cur = &this->shaders[(size_t)Renderer::ShaderType::Ambient];
+            sp_cur->UseProgram();
 
-            sp_cur.SetUniform("g_light_source.color", light.ambient.color * light.ambient.intensity);
+            sp_cur->SetUniform("g_light_source.color", light.ambient.color * light.ambient.intensity);
         } break;
 
         case LightType::Point: {
-            sp_cur = this->shaders[(size_t)Renderer::ShaderType::Point];
-            sp_cur.UseProgram();
+            sp_cur = &this->shaders[(size_t)Renderer::ShaderType::Point];
+            sp_cur->UseProgram();
 
-            sp_cur.SetUniform("g_light_source.pos", light.point.pos);
+            sp_cur->SetUniform("g_light_source.pos", light.point.pos);
 
-            sp_cur.SetUniform("g_light_source.falloff.k0", light.point.falloff.k[0]);
-            sp_cur.SetUniform("g_light_source.falloff.k1", light.point.falloff.k[1]);
-            sp_cur.SetUniform("g_light_source.falloff.k2", light.point.falloff.k[2]);
+            sp_cur->SetUniform("g_light_source.falloff.k0", light.point.falloff.k[0]);
+            sp_cur->SetUniform("g_light_source.falloff.k1", light.point.falloff.k[1]);
+            sp_cur->SetUniform("g_light_source.falloff.k2", light.point.falloff.k[2]);
 
-            sp_cur.SetUniform("g_light_source.color", light.point.color);
+            sp_cur->SetUniform("g_light_source.color", light.point.color);
         } break;
 
         case LightType::Spot: {
-            sp_cur = this->shaders[(size_t)Renderer::ShaderType::Spot];
-            sp_cur.UseProgram();
+            sp_cur = &this->shaders[(size_t)Renderer::ShaderType::Spot];
+            sp_cur->UseProgram();
 
-            sp_cur.SetUniform("g_light_source.pos", light.spot.pos);
-            sp_cur.SetUniform("g_light_source.dir", light.spot.dir);
+            sp_cur->SetUniform("g_light_source.pos", light.spot.pos);
+            sp_cur->SetUniform("g_light_source.dir", light.spot.dir);
 
-            sp_cur.SetUniform("g_light_source.inner_cutoff", light.spot.inner_cutoff);
-            sp_cur.SetUniform("g_light_source.outer_cutoff", light.spot.outer_cutoff);
+            sp_cur->SetUniform("g_light_source.inner_cutoff", light.spot.inner_cutoff);
+            sp_cur->SetUniform("g_light_source.outer_cutoff", light.spot.outer_cutoff);
 
-            sp_cur.SetUniform("g_light_source.falloff.k0", light.spot.falloff.k[0]);
-            sp_cur.SetUniform("g_light_source.falloff.k1", light.spot.falloff.k[1]);
-            sp_cur.SetUniform("g_light_source.falloff.k2", light.spot.falloff.k[2]);
+            sp_cur->SetUniform("g_light_source.falloff.k0", light.spot.falloff.k[0]);
+            sp_cur->SetUniform("g_light_source.falloff.k1", light.spot.falloff.k[1]);
+            sp_cur->SetUniform("g_light_source.falloff.k2", light.spot.falloff.k[2]);
 
-            sp_cur.SetUniform("g_light_source.color", light.spot.color);
+            sp_cur->SetUniform("g_light_source.color", light.spot.color);
         } break;
 
         case LightType::Sun: {
-            sp_cur = this->shaders[(size_t)Renderer::ShaderType::Sun];
-            sp_cur.UseProgram();
+            sp_cur = &this->shaders[(size_t)Renderer::ShaderType::Sun];
+            sp_cur->UseProgram();
 
-            sp_cur.SetUniform("g_light_source.dir", light.sun.dir);
+            sp_cur->SetUniform("g_light_source.dir", light.sun.dir);
 
-            sp_cur.SetUniform("g_light_source.color", light.sun.color);
+            sp_cur->SetUniform("g_light_source.color", light.sun.color);
+        } break;
+
+        default: {
+            ABORT("Bad shader type");
         } break;
     }
 
@@ -363,9 +368,9 @@ void Renderer::Render(const Mesh& mesh, const Material& mat, const Light& light)
     GL(glActiveTexture(GL_TEXTURE1));
     mat.specular.Bind();
 
-    sp_cur.SetUniform("g_material.diffuse", 0);
-    sp_cur.SetUniform("g_material.specular", 1);
-    sp_cur.SetUniform("g_material.gloss", mat.gloss);
+    sp_cur->SetUniform("g_material.diffuse", 0);
+    sp_cur->SetUniform("g_material.specular", 1);
+    sp_cur->SetUniform("g_material.gloss", mat.gloss);
 
     // draw mesh data
     mesh.Draw();

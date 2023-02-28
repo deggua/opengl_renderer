@@ -9,6 +9,9 @@
 
 #include "common.hpp"
 
+Handle<GLuint> ShaderProgram::Bound = 0;
+Handle<GLuint> Texture2D::Bound     = 0;
+
 Shader CompileShader(GLenum shader_type, GLsizei count, const GLchar** src, const GLint* len)
 {
     ASSERT(count > 0);
@@ -45,7 +48,7 @@ Shader CompileShader(GLenum shader_type, const char* src, i32 len)
 
 void Texture2D::LoadTexture(FILE* fd)
 {
-    GL(glGenTextures(1, &this->handle));
+    // TODO: some of these should be methods like tex.SetParameter, tex.GenerateMipmap, etc.
     this->Bind();
 
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
@@ -71,11 +74,15 @@ void Texture2D::LoadTexture(FILE* fd)
 // Texture2D
 Texture2D::Texture2D(FILE* fd)
 {
+    GL(glGenTextures(1, &this->handle));
+
     this->LoadTexture(fd);
 }
 
 Texture2D::Texture2D(const char* file_path)
 {
+    GL(glGenTextures(1, &this->handle));
+
     FILE* fd = fopen(file_path, "rb");
     if (!fd) {
         ABORT("Failed to open file: %s", file_path);
@@ -86,9 +93,24 @@ Texture2D::Texture2D(const char* file_path)
     fclose(fd);
 }
 
+// TODO: this doesn't completely eliminate needless binds because we still do binding for slots
+// in the render loop, we could track what texture handles are assigned to what texture slots
+// but I'm not sure if the slots are used for other things as well, e.g. non-Texture2Ds
 void Texture2D::Bind() const
 {
+    if (Texture2D::Bound.handle == this->handle) {
+        return;
+    }
+
     GL(glBindTexture(GL_TEXTURE_2D, this->handle));
+    Texture2D::Bound.handle = this->handle;
+}
+
+// Uniform
+Uniform::Uniform(const char* name, GLint location)
+{
+    this->name   = name;
+    this->handle = location;
 }
 
 // VAO
@@ -107,6 +129,11 @@ void VAO::Bind() const
     GL(glBindVertexArray(this->handle));
 }
 
+void VAO::Unbind() const
+{
+    GL(glBindVertexArray(0));
+}
+
 // TODO: could be templated to infer the appropriate enum type
 // TODO: maybe there's a better way to wrap this in general
 // TODO: do we need access to the normalization argument?
@@ -117,6 +144,7 @@ void VAO::SetAttribute(GLuint index, GLint components, GLenum type, GLsizei stri
     this->Bind();
     GL(glVertexAttribPointer(index, components, type, GL_FALSE, stride, (void*)offset));
     GL(glEnableVertexAttribArray(index));
+    this->Unbind();
 }
 
 // VBO
@@ -135,10 +163,16 @@ void VBO::Bind() const
     GL(glBindBuffer(GL_ARRAY_BUFFER, this->handle));
 }
 
+void VBO::Unbind() const
+{
+    GL(glBindBuffer(GL_ARRAY_BUFFER, 0));
+}
+
 void VBO::LoadData(size_t size, const void* data, GLenum usage) const
 {
     this->Bind();
     GL(glBufferData(GL_ARRAY_BUFFER, size, data, usage));
+    this->Unbind();
 }
 
 // EBO
@@ -157,8 +191,14 @@ void EBO::Bind() const
     GL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->handle));
 }
 
+void EBO::Unbind() const
+{
+    GL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0));
+}
+
 void EBO::LoadData(size_t size, const void* data, GLenum usage) const
 {
     this->Bind();
     GL(glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, data, usage));
+    this->Unbind();
 }

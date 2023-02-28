@@ -63,6 +63,18 @@ struct Light {
         SpotLight    spot;
         SunLight     sun;
     };
+
+    static Light Ambient(glm::vec3 color, f32 intensity);
+    static Light Point(glm::vec3 pos, f32 range, glm::vec3 color, f32 intensity);
+    static Light Spot(
+        glm::vec3 pos,
+        glm::vec3 dir,
+        f32       range,
+        f32       inner_theta_deg,
+        f32       outer_theta_deg,
+        glm::vec3 color,
+        f32       intensity);
+    static Light Sun(glm::vec3 dir, glm::vec3 color, f32 intensity);
 };
 
 struct Vertex {
@@ -112,6 +124,7 @@ struct PlayerCamera {
 
 struct Renderer {
     enum class ShaderType {
+        None    = -1,
         Ambient = 0,
         Point,
         Spot,
@@ -133,15 +146,3 @@ struct Renderer {
     void Clear(const glm::vec3& color);
     void Render(const Mesh& mesh, const Material& mat, const Light& light);
 };
-
-Light CreateLight_Ambient(glm::vec3 color, f32 intensity);
-Light CreateLight_Point(glm::vec3 pos, f32 range, glm::vec3 color, f32 intensity);
-Light CreateLight_Spot(
-    glm::vec3 pos,
-    glm::vec3 dir,
-    f32       range,
-    f32       inner_theta_deg,
-    f32       outer_theta_deg,
-    glm::vec3 color,
-    f32       intensity);
-Light CreateLight_Sun(glm::vec3 dir, glm::vec3 color, f32 intensity);

@@ -7,6 +7,8 @@
 #define SUN_LIGHT     3
 */
 
+#define PI 3.14159265
+
 struct Material {
     sampler2D diffuse;
     sampler2D specular;
@@ -72,10 +74,11 @@ vec3 ComputeSpecularLight(
     vec3  light_dir,
     vec3  view_dir)
 {
-    vec3  reflect_dir        = reflect(-light_dir, frag_norm);
-    float angular_dist       = dot(view_dir, reflect_dir);
-    float specular_intensity = pow(max(angular_dist, 0.0), obj_gloss);
-    return light_color * obj_specular * specular_intensity;
+    // gloss compensation for Blinn-Phong
+    const float energy_factor      = 24.0 / (8.0 * PI);
+    vec3        halfway_dir        = normalize(light_dir + view_dir);
+    float       specular_intensity = pow(max(dot(frag_norm, halfway_dir), 0.0), obj_gloss);
+    return energy_factor * light_color * obj_specular * specular_intensity;
 }
 
 // Helper functions
