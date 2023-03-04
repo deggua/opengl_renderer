@@ -157,11 +157,15 @@ static void WindowResizeCallback(GLFWwindow* window, int width, int height)
     g_res_h = height;
 }
 
-static void UpdateTime()
+static void UpdateTime(GLFWwindow* window)
 {
     f32 time = glfwGetTime();
     g_dt     = time - g_t;
     g_t      = time;
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "OpenGL | FPS = %d", (int)(1.0f / g_dt));
+    glfwSetWindowTitle(window, buf);
 }
 
 void RenderLoop(GLFWwindow* window)
@@ -174,34 +178,18 @@ void RenderLoop(GLFWwindow* window)
     renderer.Set_Resolution(g_res_w, g_res_h);
     renderer.Clear(rgb_black);
 
-    // TODO: this feels clunky
-    Texture2D box_diffuse_map  = Texture2D("assets/container.png");
-    Texture2D box_specular_map = Texture2D("assets/container_specular.png");
-    Material  box_mat          = Material{box_diffuse_map, box_specular_map, 32.0f};
-
-    // TODO: how should we load meshes?
-    Mesh box_mesh = Mesh(vertices);
+    // std::vector<Object> objs = Object::LoadObjects(std::string("assets/skull/12140_Skull_v3_L2.obj"));
+    std::vector<Object> objs = Object::LoadObjects("assets/sponza/sponza.obj");
+    printf("Loaded %zu objects\n", objs.size());
 
     // TODO: how should we construct light sources?
     Light ambient_light = Light::Ambient(rgb_white, 0.1f);
-    Light point_light   = Light::Point({2.0f, 2.0f, 2.0f}, 40.0f, rgb_white, 1.0f);
+    Light point_light   = Light::Point({2.0f, 2.0f, 2.0f}, rgb_white, 2.0f);
     Light sun_light     = Light::Sun({0.0f, -1.0f, 0.0f}, rgb_white, 1.0f);
-
-    struct Object {
-        glm::vec3 pos;
-        Mesh&     mesh;
-        Material& material;
-    };
-
-    Object objs[] = {
-        { {0.0f, 0.0f, 0.0f}, box_mesh, box_mat},
-        {{0.0f, -2.0f, 0.0f}, box_mesh, box_mat},
-    };
 
     Light lights[] = {
         sun_light,
-        ambient_light,
-        point_light,
+        // point_light,
     };
 
     renderer.Enable(GL_DEPTH_TEST);
@@ -212,11 +200,9 @@ void RenderLoop(GLFWwindow* window)
 
     GL(glEnable(GL_BLEND));
     GL(glBlendEquation(GL_FUNC_ADD));
-    GL(glBlendFunc(GL_ONE, GL_ONE));
-    GL(glDepthFunc(GL_LEQUAL));
 
     while (!glfwWindowShouldClose(window)) {
-        UpdateTime();
+        UpdateTime(window);
         ProcessKeyboardInput(window);
 
         renderer.Clear(rgb_black);
@@ -235,17 +221,48 @@ void RenderLoop(GLFWwindow* window)
         // not sure how that should be encapsulated however
         // TODO: it's also more efficient to render objects with the same texture/mesh together as well
         // not sure how that could be tracked either
+
+        // do ambient light without blending to set the depth buffer
+#if 1
+        GL(glBlendFunc(GL_ONE, GL_ZERO));
+#else
+        GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+#endif
+        GL(glDepthFunc(GL_LESS));
+        for (const auto& obj : objs) {
+            glm::mat4 mtx_world = glm::mat4(1.0f);
+            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
+            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
+            renderer.Set_WorldMatrix(mtx_world);
+
+            glm::mat4 mtx_normal = glm::mat4(1.0f);
+            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
+            renderer.Set_NormalMatrix(mtx_normal);
+
+            renderer.Render(obj, ambient_light);
+        }
+
+        // do the rest of the lights with blending
+#if 1
+        GL(glBlendFunc(GL_ONE, GL_ONE));
+#else
+        GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+#endif
+        GL(glDepthFunc(GL_LEQUAL));
         for (const auto& light : lights) {
             for (const auto& obj : objs) {
                 glm::mat4 mtx_world = glm::mat4(1.0f);
-                mtx_world           = glm::translate(mtx_world, obj.pos);
+                mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
+                // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
                 renderer.Set_WorldMatrix(mtx_world);
 
                 glm::mat4 mtx_normal = glm::mat4(1.0f);
                 mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
                 renderer.Set_NormalMatrix(mtx_normal);
 
-                renderer.Render(obj.mesh, obj.material, light);
+                renderer.Render(obj, light);
             }
         }
 

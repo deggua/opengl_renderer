@@ -33,3 +33,5 @@
 
 # Symbols
 *.pdb
+
+assets/*

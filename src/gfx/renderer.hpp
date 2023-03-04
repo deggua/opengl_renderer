@@ -8,11 +8,6 @@
 #include "common.hpp"
 #include "gfx/opengl.hpp"
 
-// TODO: why not just use a vector?
-struct DistanceFalloff {
-    glm::vec3 k;
-};
-
 struct AmbientLight {
     glm::vec3 color;
 
@@ -31,8 +26,6 @@ struct SpotLight {
     glm::vec3 dir; // must be pre-normalized
     glm::vec3 color;
 
-    DistanceFalloff falloff;
-
     f32 inner_cutoff; // dot(dir, inner_dir)
     f32 outer_cutoff; // dot(dit, outer_dir)
     f32 intensity;
@@ -41,8 +34,6 @@ struct SpotLight {
 struct PointLight {
     glm::vec3 pos;
     glm::vec3 color;
-
-    DistanceFalloff falloff;
 
     f32 intensity;
 };
@@ -65,17 +56,19 @@ struct Light {
     };
 
     static Light Ambient(glm::vec3 color, f32 intensity);
-    static Light Point(glm::vec3 pos, f32 range, glm::vec3 color, f32 intensity);
-    static Light Spot(
-        glm::vec3 pos,
-        glm::vec3 dir,
-        f32       range,
-        f32       inner_theta_deg,
-        f32       outer_theta_deg,
-        glm::vec3 color,
-        f32       intensity);
+    static Light Point(glm::vec3 pos, glm::vec3 color, f32 intensity);
+    static Light
+    Spot(glm::vec3 pos, glm::vec3 dir, f32 inner_theta_deg, f32 outer_theta_deg, glm::vec3 color, f32 intensity);
     static Light Sun(glm::vec3 dir, glm::vec3 color, f32 intensity);
 };
+
+enum class TextureType {
+    Diffuse  = 0,
+    Specular = 1,
+    Normal   = 2,
+};
+
+// TODO: texture pool
 
 struct Vertex {
     glm::vec3 pos;
@@ -83,15 +76,17 @@ struct Vertex {
     glm::vec2 tex;
 };
 
+// TODO: mesh pool
+// TODO: separate Mesh from Object (e.g. pure geometry & indicies vs geometry + texture)
 struct Mesh {
-    size_t len; // TODO: this has different meanings if you're using indices or vertices, not clear
+    size_t len;
 
     VAO vao;
     VBO vbo;
     EBO ebo;
 
     // TODO: OBJ loading, etc
-    Mesh(const std::vector<Vertex>& vertices);
+    Mesh(const std::vector<Vertex>& vertices, const std::vector<GLuint>& indices);
 
     void Draw() const;
 };
@@ -100,6 +95,21 @@ struct Material {
     Texture2D diffuse;
     Texture2D specular;
     f32       gloss;
+
+    Material(const Texture2D& diffuse, const Texture2D& specular, f32 gloss);
+
+    void Use(ShaderProgram& sp) const;
+};
+
+struct Object {
+    Mesh     mesh;
+    Material mat;
+
+    static std::vector<Object> LoadObjects(std::string_view file_path);
+
+    // Object(const Mesh& mesh, const Material& mat);
+
+    void Draw(ShaderProgram& sp) const;
 };
 
 struct TargetCamera {
@@ -144,5 +154,5 @@ struct Renderer {
 
     void Enable(GLenum setting);
     void Clear(const glm::vec3& color);
-    void Render(const Mesh& mesh, const Material& mat, const Light& light);
+    void Render(const Object& obj, const Light& light);
 };

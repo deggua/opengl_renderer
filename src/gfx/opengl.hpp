@@ -41,6 +41,7 @@ struct Texture2D : Handle<GLuint> {
 
     Texture2D(const char* file_path);
     Texture2D(FILE* fd);
+    Texture2D(const glm::vec4& color);
 
     void Bind() const;
 
@@ -134,15 +135,8 @@ struct ShaderProgram : Handle<GLuint> {
 struct VAO : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
-    VAO();
-    ~VAO();
-
-    VAO(const VAO&)            = delete;
-    VAO& operator=(const VAO&) = delete;
-
-    VAO(VAO&&)            = default;
-    VAO& operator=(VAO&&) = default;
-
+    void Reserve();
+    void Delete();
     void Bind() const;
     void Unbind() const;
     void SetAttribute(GLuint index, GLint components, GLenum type, GLsizei stride, uintptr_t offset);
@@ -151,15 +145,8 @@ struct VAO : Handle<GLuint> {
 struct VBO : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
-    VBO();
-    ~VBO();
-
-    VBO(const VBO&)            = delete;
-    VBO& operator=(const VBO&) = delete;
-
-    VBO(VBO&&)            = default;
-    VBO& operator=(VBO&&) = default;
-
+    void Reserve();
+    void Delete();
     void Bind() const;
     void Unbind() const;
     void LoadData(size_t size, const void* data, GLenum usage) const;
@@ -168,15 +155,8 @@ struct VBO : Handle<GLuint> {
 struct EBO : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
-    EBO();
-    ~EBO();
-
-    EBO(const EBO&)            = delete;
-    EBO& operator=(const EBO&) = delete;
-
-    EBO(EBO&&)            = default;
-    EBO& operator=(EBO&&) = default;
-
+    void Reserve();
+    void Delete();
     void Bind() const;
     void Unbind() const;
     void LoadData(size_t size, const void* data, GLenum usage) const;

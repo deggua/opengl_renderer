@@ -93,6 +93,23 @@ Texture2D::Texture2D(const char* file_path)
     fclose(fd);
 }
 
+Texture2D::Texture2D(const glm::vec4& color)
+{
+    GL(glGenTextures(1, &this->handle));
+
+    this->Bind();
+
+    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
+    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
+    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
+    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+
+    const u8 buf[4] = {(u8)(color.r * 255.0f), (u8)(color.g * 255.0f), (u8)(color.b * 255.0f), (u8)(color.a * 255.0f)};
+
+    GL(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf));
+    GL(glGenerateMipmap(GL_TEXTURE_2D));
+}
+
 // TODO: this doesn't completely eliminate needless binds because we still do binding for slots
 // in the render loop, we could track what texture handles are assigned to what texture slots
 // but I'm not sure if the slots are used for other things as well, e.g. non-Texture2Ds
@@ -114,14 +131,23 @@ Uniform::Uniform(const char* name, GLint location)
 }
 
 // VAO
-VAO::VAO()
+void VAO::Reserve()
 {
+    if (this->handle != 0) {
+        return;
+    }
+
     GL(glGenVertexArrays(1, &this->handle));
 }
 
-VAO::~VAO()
+void VAO::Delete()
 {
+    if (this->handle == 0) {
+        return;
+    }
+
     GL(glDeleteVertexArrays(1, &this->handle));
+    this->handle = 0;
 }
 
 void VAO::Bind() const
@@ -148,14 +174,23 @@ void VAO::SetAttribute(GLuint index, GLint components, GLenum type, GLsizei stri
 }
 
 // VBO
-VBO::VBO()
+void VBO::Reserve()
 {
+    if (this->handle != 0) {
+        return;
+    }
+
     GL(glGenBuffers(1, &this->handle));
 }
 
-VBO::~VBO()
+void VBO::Delete()
 {
+    if (this->handle == 0) {
+        return;
+    }
+
     GL(glDeleteBuffers(1, &this->handle));
+    this->handle = 0;
 }
 
 void VBO::Bind() const
@@ -172,18 +207,26 @@ void VBO::LoadData(size_t size, const void* data, GLenum usage) const
 {
     this->Bind();
     GL(glBufferData(GL_ARRAY_BUFFER, size, data, usage));
-    this->Unbind();
 }
 
 // EBO
-EBO::EBO()
+void EBO::Reserve()
 {
+    if (this->handle != 0) {
+        return;
+    }
+
     GL(glGenBuffers(1, &this->handle));
 }
 
-EBO::~EBO()
+void EBO::Delete()
 {
+    if (this->handle == 0) {
+        return;
+    }
+
     GL(glDeleteBuffers(1, &this->handle));
+    this->handle = 0;
 }
 
 void EBO::Bind() const
@@ -200,5 +243,4 @@ void EBO::LoadData(size_t size, const void* data, GLenum usage) const
 {
     this->Bind();
     GL(glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, data, usage));
-    this->Unbind();
 }

@@ -1,5 +1,9 @@
 #include "renderer.hpp"
 
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
+
+#include <assimp/Importer.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -61,54 +65,6 @@ static Shader CompileLightingShader(LightType type, const char* src, i32 len)
     return CompileShader(GL_FRAGMENT_SHADER, lengthof(source_fragments), source_fragments, source_lens);
 }
 
-// TODO: what is the point of storing/computing the linear term if it's always 1.0? Remove from table/etc
-// TODO: we should handle out of range values more elegantly, there must be a formula for this based on inverse square
-// law and the desired lumosity of the light or something
-static DistanceFalloff ComputeFalloffParameters(f32 range)
-{
-    // NOTE: see http://www.ogre3d.org/tikiwiki/tiki-index.php?page=-Point+Light+Attenuation
-    struct FalloffEntry {
-        f32       range;
-        glm::vec3 k;
-    };
-
-    static constexpr FalloffEntry table[] = {
-        {   .range = 7.0f,         .k = {1.0f, 0.7f, 1.8f}},
-        {  .range = 13.0f,       .k = {1.0f, 0.35f, 0.44f}},
-        {  .range = 20.0f,       .k = {1.0f, 0.22f, 0.20f}},
-        {  .range = 32.0f,       .k = {1.0f, 0.14f, 0.07f}},
-        {  .range = 50.0f,      .k = {1.0f, 0.09f, 0.032f}},
-        {  .range = 65.0f,      .k = {1.0f, 0.07f, 0.017f}},
-        { .range = 100.0f,    .k = {1.0f, 0.045f, 0.0075f}},
-        { .range = 160.0f,    .k = {1.0f, 0.027f, 0.0028f}},
-        { .range = 200.0f,    .k = {1.0f, 0.022f, 0.0019f}},
-        { .range = 325.0f,    .k = {1.0f, 0.014f, 0.0007f}},
-        { .range = 600.0f,    .k = {1.0f, 0.007f, 0.0002f}},
-        {.range = 3250.0f, .k = {1.0f, 0.0014f, 0.000007f}},
-    };
-
-    // find the upper and lower indices bounding the range (ii, ii - 1)
-    size_t ii;
-    for (ii = 0; ii < lengthof(table) - 1; ii++) {
-        if (table[ii].range > range) {
-            break;
-        }
-    }
-
-    // TODO: what about smaller distances?
-    // special case for 0
-    if (ii == 0) {
-        return DistanceFalloff{.k = table[0].k};
-    }
-
-    // lerp the others
-    f32       range_clamped = glm::clamp(range, table[ii - 1].range, table[ii].range);
-    f32       blend         = (range_clamped - table[ii - 1].range) / (table[ii].range - table[ii - 1].range);
-    glm::vec3 k             = glm::mix(table[ii - 1].k, table[ii].k, blend);
-
-    return DistanceFalloff{.k = k};
-}
-
 Light Light::Ambient(glm::vec3 color, f32 intensity)
 {
     Light light = {
@@ -139,7 +95,6 @@ Light Light::Sun(glm::vec3 dir, glm::vec3 color, f32 intensity)
 Light Light::Spot(
     glm::vec3 pos,
     glm::vec3 dir,
-    f32       range,
     f32       inner_theta_deg,
     f32       outer_theta_deg,
     glm::vec3 color,
@@ -151,7 +106,6 @@ Light Light::Spot(
             .pos     = pos,
             .dir     = glm::normalize(dir),
             .color   = color,
-            .falloff = ComputeFalloffParameters(range),
             .inner_cutoff = glm::cos(glm::radians(inner_theta_deg)),
             .outer_cutoff = glm::cos(glm::radians(outer_theta_deg)),
             .intensity = intensity,
@@ -161,14 +115,13 @@ Light Light::Spot(
     return light;
 }
 
-Light Light::Point(glm::vec3 pos, f32 range, glm::vec3 color, f32 intensity)
+Light Light::Point(glm::vec3 pos, glm::vec3 color, f32 intensity)
 {
     Light light = {
         .type = LightType::Point,
         .point = {
             .pos = pos,
             .color = color,
-            .falloff = ComputeFalloffParameters(range),
             .intensity = intensity,
         },
     };
@@ -177,8 +130,14 @@ Light Light::Point(glm::vec3 pos, f32 range, glm::vec3 color, f32 intensity)
 }
 
 // Mesh
-Mesh::Mesh(const std::vector<Vertex>& vertices)
+Mesh::Mesh(const std::vector<Vertex>& vertices, const std::vector<GLuint>& indices)
 {
+    this->len = indices.size();
+
+    this->vbo.Reserve();
+    this->vao.Reserve();
+    this->ebo.Reserve();
+
     this->vbo.LoadData(vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
 
     this->vbo.Bind();
@@ -187,18 +146,132 @@ Mesh::Mesh(const std::vector<Vertex>& vertices)
     this->vao.SetAttribute(2, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
 
     this->vao.Bind();
-    this->ebo.LoadData(0, NULL, GL_STATIC_DRAW);
-    // TODO: should we do anything for the EBO if we don't use it?
-    // TODO: maybe we should have separate mesh types?
+    this->ebo.LoadData(indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
 
-    this->len = vertices.size();
+    this->vao.Unbind();
 }
 
 void Mesh::Draw() const
 {
     this->vao.Bind();
-    // TODO: needs to handle indices vs vertices, probably needs a separate type or something
-    GL(glDrawArrays(GL_TRIANGLES, 0, this->len));
+
+    GL(glDrawElements(GL_TRIANGLES, this->len, GL_UNSIGNED_INT, 0));
+
+    this->vao.Unbind();
+}
+
+// Material
+Material::Material(const Texture2D& diffuse, const Texture2D& specular, f32 gloss)
+{
+    this->diffuse  = diffuse;
+    this->specular = specular;
+    this->gloss    = gloss;
+}
+
+void Material::Use(ShaderProgram& sp) const
+{
+    GL(glActiveTexture(GL_TEXTURE0));
+    this->diffuse.Bind();
+
+    GL(glActiveTexture(GL_TEXTURE1));
+    this->specular.Bind();
+
+    sp.SetUniform("material.gloss", this->gloss);
+}
+
+// TODO: our model of meshes, textures, and objects doesn't work very well
+// we're doing a lot of copying, we don't handle multiple textures per object nicely, etc
+// this looks like a real pain
+static Object ProcessAssimpMesh(const aiScene* scene, const aiMesh* mesh, std::string_view directory)
+{
+    std::vector<Vertex> vertices;
+    std::vector<GLuint> indices;
+
+    for (size_t ii = 0; ii < mesh->mNumVertices; ii++) {
+        Vertex vert = Vertex{
+            {mesh->mVertices[ii].x, mesh->mVertices[ii].y, mesh->mVertices[ii].z},
+            {mesh->mNormals[ii].x, mesh->mNormals[ii].y, mesh->mNormals[ii].z},
+            {0.0f, 0.0f}
+        };
+
+        if (mesh->mTextureCoords[0]) {
+            vert.tex.x = mesh->mTextureCoords[0][ii].x;
+            vert.tex.y = mesh->mTextureCoords[0][ii].y;
+        }
+
+        vertices.push_back(vert);
+    }
+
+    for (size_t ii = 0; ii < mesh->mNumFaces; ii++) {
+        aiFace face = mesh->mFaces[ii];
+        for (size_t jj = 0; jj < face.mNumIndices; jj++) {
+            indices.push_back(face.mIndices[jj]);
+        }
+    }
+
+    if (mesh->mMaterialIndex >= 0) {
+        aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+        Texture2D   diffuse_tex, specular_tex;
+
+        // TODO: the default textures should probably be pre-existing in the AssetManager
+        if (material->GetTextureCount(aiTextureType_DIFFUSE)) {
+            aiString diffuse_path;
+            material->GetTexture(aiTextureType_DIFFUSE, 0, &diffuse_path);
+            std::string full_path = std::string(directory) + "/" + diffuse_path.C_Str();
+            diffuse_tex           = Texture2D(full_path.c_str());
+        } else {
+            diffuse_tex = Texture2D(glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
+        }
+
+        if (material->GetTextureCount(aiTextureType_SPECULAR)) {
+            aiString specular_path;
+            material->GetTexture(aiTextureType_SPECULAR, 0, &specular_path);
+            std::string full_path = std::string(directory) + "/" + specular_path.C_Str();
+            specular_tex          = Texture2D(full_path.c_str());
+        } else {
+            specular_tex = Texture2D(glm::vec4(0, 0, 0, 0));
+        }
+
+        return Object{Mesh(vertices, indices), Material(diffuse_tex, specular_tex, 32.0f)};
+    }
+
+    ABORT("Unhandled assimp loading path");
+}
+
+static void ProcessAssimpNode(const aiScene* scene, std::vector<Object>& objs, aiNode* node, std::string_view directory)
+{
+    for (size_t ii = 0; ii < node->mNumMeshes; ii++) {
+        aiMesh* mesh = scene->mMeshes[node->mMeshes[ii]];
+        objs.push_back(ProcessAssimpMesh(scene, mesh, directory));
+    }
+
+    for (size_t ii = 0; ii < node->mNumChildren; ii++) {
+        ProcessAssimpNode(scene, objs, node->mChildren[ii], directory);
+    }
+}
+
+// Object
+std::vector<Object> Object::LoadObjects(std::string_view file_path)
+{
+    Assimp::Importer importer;
+    const aiScene*   scene
+        = importer.ReadFile(std::string(file_path).c_str(), aiProcess_Triangulate | aiProcess_GenNormals);
+
+    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+        ABORT("Asset Import failed for '%s'", std::string(file_path).c_str());
+    }
+
+    std::vector<Object> objs;
+    std::string_view    directory = file_path.substr(0, file_path.find_last_of('/'));
+    ProcessAssimpNode(scene, objs, scene->mRootNode, directory);
+
+    return objs;
+}
+
+void Object::Draw(ShaderProgram& sp) const
+{
+    this->mat.Use(sp);
+    this->mesh.Draw();
 }
 
 // Target Camera
@@ -237,6 +310,12 @@ Renderer::Renderer()
     this->shaders[(size_t)Renderer::ShaderType::Point]   = LinkShaders(vs_default, fs_point);
     this->shaders[(size_t)Renderer::ShaderType::Spot]    = LinkShaders(vs_default, fs_spot);
     this->shaders[(size_t)Renderer::ShaderType::Sun]     = LinkShaders(vs_default, fs_sun);
+
+    // TODO: might need different handling if more textures of each type are enabled
+    for (ShaderProgram& sp : this->shaders) {
+        sp.SetUniform("g_material.diffuse", 0);
+        sp.SetUniform("g_material.specular", 1);
+    }
 }
 
 void Renderer::Set_Resolution(u32 width, u32 height)
@@ -302,7 +381,7 @@ void Renderer::Clear(const glm::vec3& color)
 }
 
 // TODO: we should store the current program in the renderer
-void Renderer::Render(const Mesh& mesh, const Material& mat, const Light& light)
+void Renderer::Render(const Object& obj, const Light& light)
 {
     // TODO: we don't really need to send the cam_pos + view matrix every render call
 
@@ -323,11 +402,7 @@ void Renderer::Render(const Mesh& mesh, const Material& mat, const Light& light)
 
             sp_cur->SetUniform("g_light_source.pos", light.point.pos);
 
-            sp_cur->SetUniform("g_light_source.falloff.k0", light.point.falloff.k[0]);
-            sp_cur->SetUniform("g_light_source.falloff.k1", light.point.falloff.k[1]);
-            sp_cur->SetUniform("g_light_source.falloff.k2", light.point.falloff.k[2]);
-
-            sp_cur->SetUniform("g_light_source.color", light.point.color);
+            sp_cur->SetUniform("g_light_source.color", light.point.color * light.point.intensity);
         } break;
 
         case LightType::Spot: {
@@ -340,11 +415,7 @@ void Renderer::Render(const Mesh& mesh, const Material& mat, const Light& light)
             sp_cur->SetUniform("g_light_source.inner_cutoff", light.spot.inner_cutoff);
             sp_cur->SetUniform("g_light_source.outer_cutoff", light.spot.outer_cutoff);
 
-            sp_cur->SetUniform("g_light_source.falloff.k0", light.spot.falloff.k[0]);
-            sp_cur->SetUniform("g_light_source.falloff.k1", light.spot.falloff.k[1]);
-            sp_cur->SetUniform("g_light_source.falloff.k2", light.spot.falloff.k[2]);
-
-            sp_cur->SetUniform("g_light_source.color", light.spot.color);
+            sp_cur->SetUniform("g_light_source.color", light.spot.color * light.spot.intensity);
         } break;
 
         case LightType::Sun: {
@@ -353,7 +424,7 @@ void Renderer::Render(const Mesh& mesh, const Material& mat, const Light& light)
 
             sp_cur->SetUniform("g_light_source.dir", light.sun.dir);
 
-            sp_cur->SetUniform("g_light_source.color", light.sun.color);
+            sp_cur->SetUniform("g_light_source.color", light.sun.color * light.sun.intensity);
         } break;
 
         default: {
@@ -361,17 +432,5 @@ void Renderer::Render(const Mesh& mesh, const Material& mat, const Light& light)
         } break;
     }
 
-    // set material parameters
-    GL(glActiveTexture(GL_TEXTURE0));
-    mat.diffuse.Bind();
-
-    GL(glActiveTexture(GL_TEXTURE1));
-    mat.specular.Bind();
-
-    sp_cur->SetUniform("g_material.diffuse", 0);
-    sp_cur->SetUniform("g_material.specular", 1);
-    sp_cur->SetUniform("g_material.gloss", mat.gloss);
-
-    // draw mesh data
-    mesh.Draw();
+    obj.Draw(*sp_cur);
 }
