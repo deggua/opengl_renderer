@@ -44,6 +44,8 @@ struct Texture2D : Handle<GLuint> {
     Texture2D(const glm::vec4& color);
 
     void Bind() const;
+    void Reserve();
+    void Delete();
 
 private:
     void LoadTexture(FILE* fd);

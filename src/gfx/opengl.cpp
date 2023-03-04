@@ -95,8 +95,7 @@ Texture2D::Texture2D(const char* file_path)
 
 Texture2D::Texture2D(const glm::vec4& color)
 {
-    GL(glGenTextures(1, &this->handle));
-
+    this->Reserve();
     this->Bind();
 
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
@@ -121,6 +120,16 @@ void Texture2D::Bind() const
 
     GL(glBindTexture(GL_TEXTURE_2D, this->handle));
     Texture2D::Bound.handle = this->handle;
+}
+
+void Texture2D::Reserve()
+{
+    GL(glGenTextures(1, &this->handle));
+}
+
+void Texture2D::Delete()
+{
+    GL(glDeleteTextures(1, &this->handle));
 }
 
 // Uniform

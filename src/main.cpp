@@ -76,17 +76,23 @@ f32 g_t  = 0.0f;
 u32 g_res_w = 1280;
 u32 g_res_h = 720;
 
+u32 g_res_w_old = g_res_w;
+u32 g_res_h_old = g_res_h;
+
 static void ProcessKeyboardInput(GLFWwindow* window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
     }
 
-    constexpr float move_speed = 2.5f;
+    float move_speed = 2.5f;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+        move_speed *= 3.0f;
+    }
 
     glm::vec3 dir_forward = g_Camera.FacingDirection();
-    glm::vec3 dir_up      = g_Camera.up;
-    glm::vec3 dir_right   = cross(dir_forward, dir_up);
+    glm::vec3 dir_up      = g_Camera.UpDirection();
+    glm::vec3 dir_right   = g_Camera.RightDirection();
 
     glm::vec3 dir_move = {};
 
@@ -142,7 +148,7 @@ static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
     yoffset *= sensitivity;
 
     g_Camera.yaw += xoffset;
-    g_Camera.pitch = glm::clamp(g_Camera.pitch + yoffset, -80.0f, 80.0f);
+    g_Camera.pitch = glm::clamp(g_Camera.pitch + yoffset, -89.0f, 89.0f);
 }
 
 static void ErrorHandlerCallback(int error_code, const char* description)
@@ -168,6 +174,14 @@ static void UpdateTime(GLFWwindow* window)
     glfwSetWindowTitle(window, buf);
 }
 
+void RenderInit(GLFWwindow* window)
+{
+    (void)window;
+
+    TexturePool.Insert("$NO_DIFFUSE", glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
+    TexturePool.Insert("$NO_SPECULAR", glm::vec4(0.0f));
+}
+
 void RenderLoop(GLFWwindow* window)
 {
     constexpr f32       fov       = 70.0f;
@@ -178,8 +192,8 @@ void RenderLoop(GLFWwindow* window)
     renderer.Set_Resolution(g_res_w, g_res_h);
     renderer.Clear(rgb_black);
 
-    // std::vector<Object> objs = Object::LoadObjects(std::string("assets/skull/12140_Skull_v3_L2.obj"));
-    std::vector<Object> objs = Object::LoadObjects("assets/sponza/sponza.obj");
+    std::vector<Object> objs = Object::LoadObjects(std::string("assets/skull/12140_Skull_v3_L2.obj"));
+    // std::vector<Object> objs = Object::LoadObjects("assets/sponza/sponza.obj");
     printf("Loaded %zu objects\n", objs.size());
 
     // TODO: how should we construct light sources?
@@ -211,6 +225,9 @@ void RenderLoop(GLFWwindow* window)
         // update screen (if resolution changed)
         glm::mat4 mtx_screen = glm::perspective(glm::radians(fov), (f32)g_res_w / (f32)g_res_h, 0.1f, 100.0f);
         renderer.Set_ScreenMatrix(mtx_screen);
+        if (g_res_w != g_res_w_old || g_res_h != g_res_h_old) {
+            renderer.Set_Resolution(g_res_w, g_res_h);
+        }
 
         // update camera
         glm::mat4 mtx_view = g_Camera.ViewMatrix();
@@ -223,11 +240,7 @@ void RenderLoop(GLFWwindow* window)
         // not sure how that could be tracked either
 
         // do ambient light without blending to set the depth buffer
-#if 1
         GL(glBlendFunc(GL_ONE, GL_ZERO));
-#else
-        GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-#endif
         GL(glDepthFunc(GL_LESS));
         for (const auto& obj : objs) {
             glm::mat4 mtx_world = glm::mat4(1.0f);
@@ -244,11 +257,7 @@ void RenderLoop(GLFWwindow* window)
         }
 
         // do the rest of the lights with blending
-#if 1
         GL(glBlendFunc(GL_ONE, GL_ONE));
-#else
-        GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-#endif
         GL(glDepthFunc(GL_LEQUAL));
         for (const auto& light : lights) {
             for (const auto& obj : objs) {
@@ -303,6 +312,7 @@ int main()
 
     glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
 
+    RenderInit(window);
     RenderLoop(window);
 
     glfwTerminate();
