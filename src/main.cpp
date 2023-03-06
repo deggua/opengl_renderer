@@ -65,7 +65,11 @@ static const std::vector<Vertex> vertices = {
     { {-0.5f, 0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
 };
 
-Light point_light = Light::Point({0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, 2.0f);
+PointLight point_light = PointLight{
+    {0.0f, 0.0f, 0.0f},
+    {1.0f, 1.0f, 1.0f},
+    2.0f
+};
 
 PlayerCamera g_Camera = PlayerCamera{
     .pos = glm::vec3(0.0f, 0.0f, 3.0f),
@@ -122,7 +126,7 @@ static void ProcessKeyboardInput(GLFWwindow* window)
         g_Camera.pos += normalize(dir_move) * move_speed * g_dt;
     }
 
-    point_light.point.pos = g_Camera.pos + 2.0f * dir_forward;
+    point_light.pos = g_Camera.pos + 2.0f * dir_forward;
 }
 
 static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
@@ -179,76 +183,12 @@ static void UpdateTime(GLFWwindow* window)
     glfwSetWindowTitle(window, buf);
 }
 
-void message_callback(
-    GLenum        source,
-    GLenum        type,
-    GLuint        id,
-    GLenum        severity,
-    GLsizei       length,
-    const GLchar* message,
-    const void*   user_param)
-{
-    const auto src_str = [source]() {
-        switch (source) {
-            case GL_DEBUG_SOURCE_API:
-                return "API";
-            case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
-                return "WINDOW SYSTEM";
-            case GL_DEBUG_SOURCE_SHADER_COMPILER:
-                return "SHADER COMPILER";
-            case GL_DEBUG_SOURCE_THIRD_PARTY:
-                return "THIRD PARTY";
-            case GL_DEBUG_SOURCE_APPLICATION:
-                return "APPLICATION";
-            case GL_DEBUG_SOURCE_OTHER:
-                return "OTHER";
-        }
-    }();
-
-    const auto type_str = [type]() {
-        switch (type) {
-            case GL_DEBUG_TYPE_ERROR:
-                return "ERROR";
-            case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
-                return "DEPRECATED_BEHAVIOR";
-            case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
-                return "UNDEFINED_BEHAVIOR";
-            case GL_DEBUG_TYPE_PORTABILITY:
-                return "PORTABILITY";
-            case GL_DEBUG_TYPE_PERFORMANCE:
-                return "PERFORMANCE";
-            case GL_DEBUG_TYPE_MARKER:
-                return "MARKER";
-            case GL_DEBUG_TYPE_OTHER:
-                return "OTHER";
-        }
-    }();
-
-    const auto severity_str = [severity]() {
-        switch (severity) {
-            case GL_DEBUG_SEVERITY_NOTIFICATION:
-                return "NOTIFICATION";
-            case GL_DEBUG_SEVERITY_LOW:
-                return "LOW";
-            case GL_DEBUG_SEVERITY_MEDIUM:
-                return "MEDIUM";
-            case GL_DEBUG_SEVERITY_HIGH:
-                return "HIGH";
-        }
-    }();
-    std::cout << src_str << ", " << type_str << ", " << severity_str << ", " << id << ": " << message << '\n';
-}
-
 void RenderInit(GLFWwindow* window)
 {
     (void)window;
 
-    TexturePool.Insert("$NO_DIFFUSE", glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
-    TexturePool.Insert("$NO_SPECULAR", glm::vec4(0.0f));
-
-    // GL(glEnable(GL_DEBUG_OUTPUT));
-    // GL(glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS));
-    // GL(glDebugMessageCallback(message_callback, nullptr));
+    TexturePool.Load(DefaultTexture_Diffuse, true, glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
+    TexturePool.Load(DefaultTexture_Specular, true, glm::vec4(0.0f));
 }
 
 void RenderLoop(GLFWwindow* window)
@@ -257,7 +197,7 @@ void RenderLoop(GLFWwindow* window)
     constexpr glm::vec3 rgb_black = {0.0f, 0.0f, 0.0f};
     constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
 
-    Renderer renderer = Renderer();
+    Renderer renderer = Renderer(true);
     renderer.Set_Resolution(g_res_w, g_res_h);
     renderer.Clear(rgb_black);
 
@@ -266,21 +206,19 @@ void RenderLoop(GLFWwindow* window)
     printf("Loaded %zu objects\n", objs.size());
 
     // TODO: how should we construct light sources?
-    Light ambient_light = Light::Ambient(rgb_white, 0.1f);
-    Light sun_light     = Light::Sun({0.0f, -1.0f, 0.0f}, rgb_white, 1.0f);
+    AmbientLight ambient_light = AmbientLight{rgb_white, 0.1f};
 
-    Light* lights[] = {
-        // sun_light,
-        &point_light,
+    SunLight sun_light = SunLight{
+        {0.0f, -1.0f, 0.0f},
+        rgb_white,
+        1.0f
     };
 
     renderer.Enable(GL_DEPTH_TEST);
-
-    GL(glEnable(GL_CULL_FACE));
+    renderer.Enable(GL_CULL_FACE);
+    renderer.Enable(GL_BLEND);
     GL(glCullFace(GL_BACK));
     GL(glFrontFace(GL_CCW));
-
-    GL(glEnable(GL_BLEND));
     GL(glBlendEquation(GL_FUNC_ADD));
 
     while (!glfwWindowShouldClose(window)) {
@@ -289,13 +227,12 @@ void RenderLoop(GLFWwindow* window)
 
         renderer.Clear(rgb_black);
 
-        // TODO: do this here? what about resolution? maybe we need a boolean to do this only if the resolution changed
-        // update screen (if resolution changed)
-        glm::mat4 mtx_screen = glm::perspective(glm::radians(fov), (f32)g_res_w / (f32)g_res_h, 0.1f, 100.0f);
-        renderer.Set_ScreenMatrix(mtx_screen);
         if (g_res_w != g_res_w_old || g_res_h != g_res_h_old) {
             renderer.Set_Resolution(g_res_w, g_res_h);
         }
+
+        glm::mat4 mtx_screen = glm::perspective(glm::radians(fov), (f32)g_res_w / (f32)g_res_h, 0.1f, 100.0f);
+        renderer.Set_ScreenMatrix(mtx_screen);
 
         // update camera
         glm::mat4 mtx_view = g_Camera.ViewMatrix();
@@ -324,7 +261,7 @@ void RenderLoop(GLFWwindow* window)
             mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
             renderer.Set_NormalMatrix(mtx_normal);
 
-            renderer.Render(obj, ambient_light);
+            renderer.Render_Light(ambient_light, obj);
         }
 
         /* ------------------ */
@@ -339,7 +276,7 @@ void RenderLoop(GLFWwindow* window)
         GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
         GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
         GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
-
+#if 1
         for (const auto& obj : objs) {
             glm::mat4 mtx_world = glm::mat4(1.0f);
             mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
@@ -351,8 +288,25 @@ void RenderLoop(GLFWwindow* window)
             mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
             renderer.Set_NormalMatrix(mtx_normal);
 
-            renderer.ComputeShadows(obj, point_light);
+            renderer.Render_Shadow(point_light, obj);
         }
+#endif
+
+#if 1
+        for (const auto& obj : objs) {
+            glm::mat4 mtx_world = glm::mat4(1.0f);
+            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
+            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
+            renderer.Set_WorldMatrix(mtx_world);
+
+            glm::mat4 mtx_normal = glm::mat4(1.0f);
+            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
+            renderer.Set_NormalMatrix(mtx_normal);
+
+            renderer.Render_Shadow(sun_light, obj);
+        }
+#endif
 
         GL(glDisable(GL_DEPTH_CLAMP));
         GL(glEnable(GL_CULL_FACE));
@@ -367,20 +321,35 @@ void RenderLoop(GLFWwindow* window)
         GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_KEEP, GL_KEEP));
         GL(glBlendFunc(GL_ONE, GL_ONE));
         GL(glDepthFunc(GL_LEQUAL));
-        for (const auto& light : lights) {
-            for (const auto& obj : objs) {
-                glm::mat4 mtx_world = glm::mat4(1.0f);
-                mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
-                // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-                mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
-                renderer.Set_WorldMatrix(mtx_world);
 
-                glm::mat4 mtx_normal = glm::mat4(1.0f);
-                mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
-                renderer.Set_NormalMatrix(mtx_normal);
+#if 1
+        for (const auto& obj : objs) {
+            glm::mat4 mtx_world = glm::mat4(1.0f);
+            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
+            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
+            renderer.Set_WorldMatrix(mtx_world);
 
-                renderer.Render(obj, *light);
-            }
+            glm::mat4 mtx_normal = glm::mat4(1.0f);
+            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
+            renderer.Set_NormalMatrix(mtx_normal);
+
+            renderer.Render_Light(point_light, obj);
+        }
+#endif
+
+        for (const auto& obj : objs) {
+            glm::mat4 mtx_world = glm::mat4(1.0f);
+            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
+            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
+            renderer.Set_WorldMatrix(mtx_world);
+
+            glm::mat4 mtx_normal = glm::mat4(1.0f);
+            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
+            renderer.Set_NormalMatrix(mtx_normal);
+
+            renderer.Render_Light(sun_light, obj);
         }
 
         glfwSwapBuffers(window);

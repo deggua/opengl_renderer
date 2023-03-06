@@ -6,7 +6,9 @@
 #    define TARGET_LINUX
 #endif
 
+/* clang-format off */
+
 #include "common/config.hpp"
 #include "common/macros.hpp"
-#include "common/opengl.hpp"
 #include "common/types.hpp"
+#include "common/opengl.hpp"

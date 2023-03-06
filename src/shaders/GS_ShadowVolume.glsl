@@ -1,111 +1,269 @@
-#version 330
+/*
+#version 330 core
+
+#define AMBIENT_LIGHT 0
+#define POINT_LIGHT   1
+#define SPOT_LIGHT    2
+#define SUN_LIGHT     3
+*/
+
+#define EPSILON 0.001
+
+struct PointLight {
+    vec3 pos;
+};
+
+struct SpotLight {
+    vec3  pos;
+    vec3  dir;          // must be pre-normalized
+    float inner_cutoff; // dot(dir, inner_dir)
+    float outer_cutoff; // dot(dit, outer_dir)
+};
+
+struct SunLight {
+    vec3 dir; // must be pre-normalized
+};
+
+struct Edges {
+    vec3 e1, e2, e3, e4, e5, e6;
+};
+
+struct Vertices {
+    vec3 v0, v1, v2, v3, v4, v5;
+};
 
 layout(triangles_adjacency) in; // six vertices in
 layout(triangle_strip, max_vertices = 18) out;
 
 in vec3 vo_vtx_pos[]; // an array of 6 vertices (triangle with adjacency)
 
-// TODO: this only works for point lights
-uniform vec3 g_light_pos;
-
 uniform mat3 g_mtx_normal; // normal -> world
 uniform mat4 g_mtx_world;  // obj    -> world
 uniform mat4 g_mtx_view;   // world  -> view
 uniform mat4 g_mtx_screen; // view   -> screen
 
-float EPSILON = 0.001;
+#if LIGHT_TYPE == SUN_LIGHT
+uniform SunLight g_light_source;
 
-// Emit a quad using a triangle strip
-void EmitQuad(vec3 StartVertex, vec3 EndVertex, mat4 mtx_wvp)
+#elif LIGHT_TYPE == AMBIENT_LIGHT
+uniform AmbientLight g_light_source;
+
+#elif LIGHT_TYPE == POINT_LIGHT
+uniform PointLight g_light_source;
+
+#elif LIGHT_TYPE == SPOT_LIGHT
+uniform SpotLight g_light_source;
+
+#endif
+
+void EmitQuad(PointLight light, vec3 start_vertex, vec3 end_vertex, mat4 mtx_vp)
 {
+    vec3 light_dir = normalize(start_vertex - light.pos);
+
     // Vertex #1: the starting vertex (just a tiny bit below the original edge)
-    vec3 LightDir = normalize(StartVertex - g_light_pos);
-    gl_Position   = mtx_wvp * vec4((StartVertex + LightDir * EPSILON), 1.0);
+    gl_Position = mtx_vp * vec4((start_vertex + light_dir * EPSILON), 1.0);
     EmitVertex();
 
     // Vertex #2: the starting vertex projected to infinity
-    gl_Position = mtx_wvp * vec4(LightDir, 0.0);
+    gl_Position = mtx_vp * vec4(light_dir, 0.0);
     EmitVertex();
 
+    light_dir = normalize(end_vertex - light.pos);
+
     // Vertex #3: the ending vertex (just a tiny bit below the original edge)
-    LightDir    = normalize(EndVertex - g_light_pos);
-    gl_Position = mtx_wvp * vec4((EndVertex + LightDir * EPSILON), 1.0);
+    gl_Position = mtx_vp * vec4((end_vertex + light_dir * EPSILON), 1.0);
     EmitVertex();
 
     // Vertex #4: the ending vertex projected to infinity
-    gl_Position = mtx_wvp * vec4(LightDir, 0.0);
+    gl_Position = mtx_vp * vec4(light_dir, 0.0);
     EmitVertex();
 
     EndPrimitive();
 }
 
-void main()
+void EmitQuad(SpotLight light, vec3 start_vertex, vec3 end_vertex, mat4 mtx_vp)
 {
-    mat4 mtx_wvp = g_mtx_screen * g_mtx_view;
+    vec3 light_dir = normalize(start_vertex - light.pos);
 
-    vec3 e1 = vo_vtx_pos[2] - vo_vtx_pos[0];
-    vec3 e2 = vo_vtx_pos[4] - vo_vtx_pos[0];
-    vec3 e3 = vo_vtx_pos[1] - vo_vtx_pos[0];
-    vec3 e4 = vo_vtx_pos[3] - vo_vtx_pos[2];
-    vec3 e5 = vo_vtx_pos[4] - vo_vtx_pos[2];
-    vec3 e6 = vo_vtx_pos[5] - vo_vtx_pos[0];
+    // Vertex #1: the starting vertex (just a tiny bit below the original edge)
+    gl_Position = mtx_vp * vec4((start_vertex + light_dir * EPSILON), 1.0);
+    EmitVertex();
 
-    vec3 Normal   = cross(e1, e2);
-    vec3 LightDir = g_light_pos - vo_vtx_pos[0];
+    // Vertex #2: the starting vertex projected to infinity
+    gl_Position = mtx_vp * vec4(light_dir, 0.0);
+    EmitVertex();
+
+    light_dir = normalize(end_vertex - light.pos);
+
+    // Vertex #3: the ending vertex (just a tiny bit below the original edge)
+    gl_Position = mtx_vp * vec4((end_vertex + light_dir * EPSILON), 1.0);
+    EmitVertex();
+
+    // Vertex #4: the ending vertex projected to infinity
+    gl_Position = mtx_vp * vec4(light_dir, 0.0);
+    EmitVertex();
+
+    EndPrimitive();
+}
+
+void EmitQuad(SunLight light, vec3 start_vertex, vec3 end_vertex, mat4 mtx_vp)
+{
+    vec3 light_dir = light.dir;
+
+    // Vertex #1: the starting vertex (just a tiny bit below the original edge)
+    gl_Position = mtx_vp * vec4((start_vertex + light_dir * EPSILON), 1.0);
+    EmitVertex();
+
+    // Vertex #2: the starting vertex projected to infinity
+    gl_Position = mtx_vp * vec4(light_dir, 0.0);
+    EmitVertex();
+
+    // Vertex #3: the ending vertex (just a tiny bit below the original edge)
+    gl_Position = mtx_vp * vec4((end_vertex + light_dir * EPSILON), 1.0);
+    EmitVertex();
+
+    // Vertex #4: the ending vertex projected to infinity
+    gl_Position = mtx_vp * vec4(light_dir, 0.0);
+    EmitVertex();
+
+    EndPrimitive();
+}
+
+void EmitVolume(PointLight light, Vertices verts, Edges edges, mat4 mtx_vp)
+{
+    vec3 normal    = cross(edges.e1, edges.e2);
+    vec3 light_dir = light.pos - verts.v0;
 
     // Handle only light facing triangles
-    if (dot(Normal, LightDir) > 0) {
-        Normal = cross(e3, e1);
+    if (dot(normal, light_dir) > 0) {
+        normal = cross(edges.e3, edges.e1);
 
-        if (dot(Normal, LightDir) <= 0) {
-            vec3 StartVertex = vo_vtx_pos[0];
-            vec3 EndVertex   = vo_vtx_pos[2];
-            EmitQuad(StartVertex, EndVertex, mtx_wvp);
+        if (dot(normal, light_dir) <= 0) {
+            vec3 vtx_start = verts.v0;
+            vec3 vtx_end   = verts.v2;
+            EmitQuad(light, vtx_start, vtx_end, mtx_vp);
         }
 
-        Normal   = cross(e4, e5);
-        LightDir = g_light_pos - vo_vtx_pos[2];
+        normal    = cross(edges.e4, edges.e5);
+        light_dir = light.pos - verts.v2;
 
-        if (dot(Normal, LightDir) <= 0) {
-            vec3 StartVertex = vo_vtx_pos[2];
-            vec3 EndVertex   = vo_vtx_pos[4];
-            EmitQuad(StartVertex, EndVertex, mtx_wvp);
+        if (dot(normal, light_dir) <= 0) {
+            vec3 vtx_start = verts.v2;
+            vec3 vtx_end   = verts.v4;
+            EmitQuad(light, vtx_start, vtx_end, mtx_vp);
         }
 
-        Normal   = cross(e2, e6);
-        LightDir = g_light_pos - vo_vtx_pos[4];
+        normal    = cross(edges.e2, edges.e6);
+        light_dir = light.pos - verts.v4;
 
-        if (dot(Normal, LightDir) <= 0) {
-            vec3 StartVertex = vo_vtx_pos[4];
-            vec3 EndVertex   = vo_vtx_pos[0];
-            EmitQuad(StartVertex, EndVertex, mtx_wvp);
+        if (dot(normal, light_dir) <= 0) {
+            vec3 vtx_start = verts.v4;
+            vec3 vtx_end   = verts.v0;
+            EmitQuad(light, vtx_start, vtx_end, mtx_vp);
         }
 
         // render the front cap
-        LightDir    = (normalize(vo_vtx_pos[0] - g_light_pos));
-        gl_Position = mtx_wvp * vec4((vo_vtx_pos[0] + LightDir * EPSILON), 1.0);
+        light_dir   = normalize(verts.v0 - light.pos);
+        gl_Position = mtx_vp * vec4((verts.v0 + light_dir * EPSILON), 1.0);
         EmitVertex();
 
-        LightDir    = (normalize(vo_vtx_pos[2] - g_light_pos));
-        gl_Position = mtx_wvp * vec4((vo_vtx_pos[2] + LightDir * EPSILON), 1.0);
+        light_dir   = normalize(verts.v2 - light.pos);
+        gl_Position = mtx_vp * vec4((verts.v2 + light_dir * EPSILON), 1.0);
         EmitVertex();
 
-        LightDir    = (normalize(vo_vtx_pos[4] - g_light_pos));
-        gl_Position = mtx_wvp * vec4((vo_vtx_pos[4] + LightDir * EPSILON), 1.0);
+        light_dir   = normalize(verts.v4 - light.pos);
+        gl_Position = mtx_vp * vec4((verts.v4 + light_dir * EPSILON), 1.0);
         EmitVertex();
         EndPrimitive();
 
         // render the back cap
-        LightDir    = vo_vtx_pos[0] - g_light_pos;
-        gl_Position = mtx_wvp * vec4(LightDir, 0.0);
+        light_dir   = verts.v0 - light.pos;
+        gl_Position = mtx_vp * vec4(light_dir, 0.0);
         EmitVertex();
 
-        LightDir    = vo_vtx_pos[4] - g_light_pos;
-        gl_Position = mtx_wvp * vec4(LightDir, 0.0);
+        light_dir   = verts.v4 - light.pos;
+        gl_Position = mtx_vp * vec4(light_dir, 0.0);
         EmitVertex();
 
-        LightDir    = vo_vtx_pos[2] - g_light_pos;
-        gl_Position = mtx_wvp * vec4(LightDir, 0.0);
+        light_dir   = verts.v2 - light.pos;
+        gl_Position = mtx_vp * vec4(light_dir, 0.0);
         EmitVertex();
     }
+}
+
+void EmitVolume(SunLight light, Vertices verts, Edges edges, mat4 mtx_vp)
+{
+    vec3 normal    = cross(edges.e1, edges.e2);
+    vec3 light_dir = -light.dir;
+
+    // Handle only light facing triangles
+    if (dot(normal, light_dir) > 0) {
+        normal = cross(edges.e3, edges.e1);
+
+        if (dot(normal, light_dir) <= 0) {
+            vec3 vtx_start = verts.v0;
+            vec3 vtx_end   = verts.v2;
+            EmitQuad(light, vtx_start, vtx_end, mtx_vp);
+        }
+
+        normal = cross(edges.e4, edges.e5);
+
+        if (dot(normal, light_dir) <= 0) {
+            vec3 vtx_start = verts.v2;
+            vec3 vtx_end   = verts.v4;
+            EmitQuad(light, vtx_start, vtx_end, mtx_vp);
+        }
+
+        normal = cross(edges.e2, edges.e6);
+
+        if (dot(normal, light_dir) <= 0) {
+            vec3 vtx_start = verts.v4;
+            vec3 vtx_end   = verts.v0;
+            EmitQuad(light, vtx_start, vtx_end, mtx_vp);
+        }
+
+        // render the front cap
+        light_dir   = light.dir;
+        gl_Position = mtx_vp * vec4((verts.v0 + light_dir * EPSILON), 1.0);
+        EmitVertex();
+
+        gl_Position = mtx_vp * vec4((verts.v2 + light_dir * EPSILON), 1.0);
+        EmitVertex();
+
+        gl_Position = mtx_vp * vec4((verts.v4 + light_dir * EPSILON), 1.0);
+        EmitVertex();
+        EndPrimitive();
+
+        // render the back cap
+        gl_Position = mtx_vp * vec4(light_dir, 0.0);
+        EmitVertex();
+        EmitVertex();
+        EmitVertex();
+    }
+}
+
+// TODO: spot light seems a little trickier, need to check if the vertex is within the cone I think
+void EmitVolume(SpotLight light, Vertices verts, Edges edges, mat4 mtx_vp) {}
+
+void main()
+{
+    mat4 mtx_vp = g_mtx_screen * g_mtx_view;
+
+    Edges edges;
+    edges.e1 = vo_vtx_pos[2] - vo_vtx_pos[0];
+    edges.e2 = vo_vtx_pos[4] - vo_vtx_pos[0];
+    edges.e3 = vo_vtx_pos[1] - vo_vtx_pos[0];
+    edges.e4 = vo_vtx_pos[3] - vo_vtx_pos[2];
+    edges.e5 = vo_vtx_pos[4] - vo_vtx_pos[2];
+    edges.e6 = vo_vtx_pos[5] - vo_vtx_pos[0];
+
+    Vertices verts;
+    verts.v0 = vo_vtx_pos[0];
+    verts.v1 = vo_vtx_pos[1];
+    verts.v2 = vo_vtx_pos[2];
+    verts.v3 = vo_vtx_pos[3];
+    verts.v4 = vo_vtx_pos[4];
+    verts.v5 = vo_vtx_pos[5];
+
+    EmitVolume(g_light_source, verts, edges, mtx_vp);
 }

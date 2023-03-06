@@ -17,9 +17,8 @@ struct Material {
     Texture2D* specular;
     f32        gloss;
 
-    // TODO: implement
-    // Material(aiMaterial& mat);
-    Material(Texture2D* diffuse, Texture2D* specular, f32 gloss);
+    Material();
+    Material(const aiMaterial& material, std::string_view directory);
 
     void Use(ShaderProgram& sp) const;
 };
@@ -32,21 +31,21 @@ struct Vertex {
 
 // TODO: mesh pool
 struct Mesh {
-    size_t len;
+    usize len;
 
     VAO vao;
     VBO vbo;
     EBO ebo;
 
-    // TODO: implement
-    // Mesh(const aiMesh& mesh);
-    Mesh(const std::vector<Vertex>& vertices, const std::vector<GLuint>& indices);
+    Mesh(const aiMesh& mesh);
 
     void Draw() const;
 };
 
+// TODO: ShadowMesh and Mesh could share the vertices buffer
+// TODO: we need some way to have Meshes that cast shadows and meshes that don't while exploiting the above property
 struct ShadowMesh {
-    size_t len;
+    usize len;
 
     VAO vao;
     VBO vbo;
@@ -60,11 +59,13 @@ struct ShadowMesh {
 struct Object {
     Mesh       mesh;
     ShadowMesh shadow_mesh;
-    Material   mat;
+    Material   material;
+
+    glm::vec3 position;
+
+    Object(const Mesh& mesh, const ShadowMesh& shadow_mesh, const Material& material);
 
     static std::vector<Object> LoadObjects(std::string_view file_path);
-
-    // Object(const Mesh& mesh, const Material& mat);
 
     void Draw(ShaderProgram& sp) const;
     void ComputeShadow(ShaderProgram& sp) const;
@@ -75,28 +76,28 @@ struct Object {
 template<class T>
 struct AssetPool {
     struct Asset {
-        T           value;
         std::string uid;
+        T           value;
         u32         checkout_count = 0;
         bool        is_loaded      = false;
         bool        is_static      = false;
 
-        Asset(const std::string& file_path)
-        {
-            this->uid = file_path;
-        }
-
         template<class... Ts>
-        Asset(const std::string& uid, Ts... args)
+        Asset(std::string_view uid, bool is_static, Ts... args)
         {
-            this->uid       = uid;
-            this->is_static = true;
-            this->value     = T(args...);
+            this->uid = uid;
+
+            if (is_static) {
+                this->value = T(args...);
+            }
+
+            this->is_static = is_static;
+            this->is_loaded = is_static;
         }
 
-        void Load()
+        void TryLoad()
         {
-            if (!is_loaded && !is_static) {
+            if (!is_loaded) {
                 this->value     = T(this->uid.c_str());
                 this->is_loaded = true;
             }
@@ -104,30 +105,25 @@ struct AssetPool {
             return;
         }
 
-        void Unload()
+        void TryUnload()
         {
-            if (this->checkout_count > 0) {
-                ABORT("Can't unload an asset when checkout_count > 0");
-            }
-
-            if (this->is_static) {
-                // can't unload static assets
+            // can't unload static assets or assets currently checked out or unloaded assets
+            if (this->checkout_count > 0 || this->is_static || !this->is_loaded) {
                 return;
             }
 
             this->value.Delete();
             this->is_loaded = false;
-            checkout_count -= 1;
         }
 
-        T* CheckOut()
+        T* Take()
         {
-            this->Load();
-            checkout_count += 1;
+            this->TryLoad();
+            this->checkout_count += 1;
             return &value;
         }
 
-        static void CheckIn(T* ref)
+        static void Release(T* ref)
         {
             // TODO: we could unload when checkout_count == 0 but that's probably not ideal, better to do a bunch of
             // unloads in one pass when we need to free memory (e.g. between level loads)
@@ -143,35 +139,44 @@ struct AssetPool {
         this->assets.reserve(capacity);
     }
 
-    // NOTE: This foricbly inserts asset into the pool, thus care should be take to make sure ids can't collide
-    // i.e. use a reserved token that can't appear in a file path
     template<class... Ts>
-    T* Insert(const std::string& uid, Ts... args)
+    T* Load(std::string_view uid, bool is_static, Ts... args)
     {
-        if (!this->assets.contains(uid)) {
+        // TODO: having to create a temp string is dumb, this should be avoidable
+        std::string tmp  = std::string(uid);
+        const auto  elem = this->assets.find(tmp);
+
+        if (elem == std::end(this->assets)) {
             return this->assets
-                .emplace(std::piecewise_construct, std::forward_as_tuple(uid), std::forward_as_tuple(uid, args...))
-                .first->second.CheckOut();
+                .emplace(
+                    std::piecewise_construct,
+                    std::forward_as_tuple(tmp),
+                    std::forward_as_tuple(tmp, is_static, args...))
+                .first->second.Take();
         } else {
-            return this->assets.at(uid).CheckOut();
+            return elem->second.Take();
         }
     }
 
-    template<class... Ts>
-    T* Insert(const char* uid, Ts... args)
+    T* Take(std::string_view uid)
     {
-        return Insert(std::string(uid), args...);
+        return this->Load(uid, false);
     }
 
-    T* CheckOut(const std::string& file_path)
+    void Release(T* ref)
     {
-        return this->Insert(file_path);
+        Asset::Release(ref);
     }
 
-    void CheckIn(T* ref)
+    void GarbageCollect()
     {
-        Asset::CheckIn(ref);
+        for (const auto& [key, val] : this->assets) {
+            val.TryUnload();
+        }
     }
 };
+
+constexpr const char* DefaultTexture_Diffuse  = ".NO_DIFFUSE";
+constexpr const char* DefaultTexture_Specular = ".NO_SPECULAR";
 
 extern AssetPool<Texture2D> TexturePool;

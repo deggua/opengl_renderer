@@ -7,6 +7,13 @@
 #include "common.hpp"
 #include "common/macros.hpp"
 
+#ifdef TARGET_WINDOWS
+#    include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#else
+#    include <unistd.h>
+#endif
+
 #define U8_DEC_FMT  "%" PRIu8
 #define U16_DEC_FMT "%" PRIu16
 #define U32_DEC_FMT "%" PRIu32
@@ -60,6 +67,9 @@ typedef int_least16_t i16_min;
 typedef int_least32_t i32_min;
 typedef int_least64_t i64_min;
 
+typedef size_t  usize;
+typedef ssize_t isize;
+
 typedef union {
     f32 f32;
 
@@ -85,13 +95,6 @@ typedef union {
     u64 u64;
     u8  u8[sizeof(f64)];
 } f64_ieee754;
-
-#ifdef TARGET_WINDOWS
-#    include <BaseTsd.h>
-typedef SSIZE_T ssize_t;
-#else
-#    include <unistd.h>
-#endif
 
 static_assert_decl(sizeof(f32) == 4);
 static_assert_decl(sizeof(f64) == 8);

@@ -87,17 +87,17 @@ struct PlayerCamera {
 
 struct Renderer {
     enum class ShaderType {
-        None    = -1,
-        Ambient = 0,
-        Point,
+        None  = -1,
+        Point = 0,
         Spot,
         Sun,
+        Ambient,
     };
 
-    ShaderProgram shaders[4]    = {};
-    ShaderProgram shadow_volume = {};
+    ShaderProgram dl_shader[4] = {};
+    ShaderProgram sv_shader[3] = {};
 
-    Renderer();
+    Renderer(bool opengl_logging = false);
 
     void Set_Resolution(u32 width, u32 height);
     void Set_NormalMatrix(const glm::mat3& mtx_normal);
@@ -108,6 +108,15 @@ struct Renderer {
 
     void Enable(GLenum setting);
     void Clear(const glm::vec3& color);
-    void Render(const Object& obj, const Light& light);
-    void ComputeShadows(const Object& obj, const Light& light);
+
+    void Render_Light(const AmbientLight& light, const Object& obj);
+
+    void Render_Light(const PointLight& light, const Object& obj);
+    void Render_Shadow(const PointLight& light, const Object& obj);
+
+    void Render_Light(const SpotLight& light, const Object& obj);
+    void Render_Shadow(const SpotLight& light, const Object& obj);
+
+    void Render_Light(const SunLight& light, const Object& obj);
+    void Render_Shadow(const SunLight& light, const Object& obj);
 };
