@@ -40,6 +40,150 @@ void Mesh::Draw() const
     this->vao.Unbind();
 }
 
+using VertexId = uint32_t;
+
+struct OppositeVertexId {
+    VertexId vtx_a, vtx_b;
+    bool     has_b = false;
+
+    OppositeVertexId(VertexId vtx_a)
+    {
+        this->vtx_a = vtx_a;
+    }
+
+    void SetVtxB(VertexId vtx_b)
+    {
+        this->vtx_b = vtx_b;
+        this->has_b = true;
+    }
+
+    std::optional<VertexId> GetOpposite(VertexId vtx)
+    {
+        if (this->vtx_a != vtx) {
+            return this->vtx_a;
+        } else if (this->has_b) {
+            return this->vtx_b;
+        } else {
+            return std::nullopt;
+        }
+    }
+};
+
+struct EdgeId {
+    uint64_t id;
+
+    operator uint64_t()
+    {
+        return id;
+    }
+
+    EdgeId(VertexId vtx_a, VertexId vtx_b)
+    {
+        if (vtx_a > vtx_b) {
+            id = ((uint64_t)vtx_a << 32) | ((uint64_t)vtx_b);
+        } else {
+            id = ((uint64_t)vtx_b << 32) | ((uint64_t)vtx_a);
+        }
+    }
+};
+
+bool operator==(const EdgeId& lhs, const EdgeId& rhs)
+{
+    return (lhs.id == rhs.id);
+}
+
+template<>
+struct std::hash<EdgeId> {
+    std::size_t operator()(const EdgeId& edge) const noexcept
+    {
+        return std::hash<uint64_t>{}(edge.id);
+    }
+};
+
+// TODO: certain types of geometry won't work properly with this and we don't detect it
+// example: if an edge has more than 2 opposite vertices (like a multi-planar grass mesh where 1 edge shares 3+ tris)
+ShadowMesh::ShadowMesh(const aiMesh& mesh)
+{
+    // build a map from an edge to its opposite vertices
+    std::unordered_map<EdgeId, OppositeVertexId> edge_map = {};
+    for (size_t ii = 0; ii < mesh.mNumFaces; ii++) {
+        ASSERT(mesh.mFaces[ii].mNumIndices == 3);
+        for (size_t jj = 0; jj < 3; jj++) {
+            EdgeId   edge    = EdgeId(mesh.mFaces[ii].mIndices[jj], mesh.mFaces[ii].mIndices[(jj + 1) % 3]);
+            VertexId vtx_opp = mesh.mFaces[ii].mIndices[(jj + 2) % 3];
+
+            // if the edge is not in the map, then insert it with the first opp vertex as the current opp vertex
+            // if the edge is in the map, then set the 2nd opp vertex to the current edge's opposite vertex
+            const auto& edge_in_map = edge_map.find(edge);
+            if (edge_in_map != edge_map.end()) {
+                edge_in_map->second.SetVtxB(vtx_opp);
+            } else {
+                edge_map.insert({edge, OppositeVertexId(vtx_opp)});
+            }
+        }
+    }
+
+    // fill the indices array in groups of 6 indices of triangle adjacency data
+    std::vector<GLuint> indices = {};
+    for (size_t ii = 0; ii < mesh.mNumFaces; ii++) {
+        // see: https://ogldev.org/www/tutorial39/adjacencies.jpg
+        GLuint adj_indices[6] = {
+            [0] = mesh.mFaces[ii].mIndices[0],
+            [2] = mesh.mFaces[ii].mIndices[1],
+            [4] = mesh.mFaces[ii].mIndices[2],
+        };
+
+        EdgeId   e1        = EdgeId(mesh.mFaces[ii].mIndices[0], mesh.mFaces[ii].mIndices[1]);
+        VertexId e1_opp_in = mesh.mFaces[ii].mIndices[2];
+
+        EdgeId   e2        = EdgeId(mesh.mFaces[ii].mIndices[1], mesh.mFaces[ii].mIndices[2]);
+        VertexId e2_opp_in = mesh.mFaces[ii].mIndices[0];
+
+        EdgeId   e3        = EdgeId(mesh.mFaces[ii].mIndices[2], mesh.mFaces[ii].mIndices[0]);
+        VertexId e3_opp_in = mesh.mFaces[ii].mIndices[1];
+
+        // TODO: not sure if this is exactly what we want, but the idea is that it looks folded in on itself
+        // so that the edge forms a silhoutte edge in the degenerate case where the mesh is open
+        adj_indices[1] = edge_map.at(e1).GetOpposite(e1_opp_in).value_or(e1_opp_in);
+        adj_indices[3] = edge_map.at(e2).GetOpposite(e2_opp_in).value_or(e2_opp_in);
+        adj_indices[5] = edge_map.at(e3).GetOpposite(e3_opp_in).value_or(e3_opp_in);
+
+        indices.insert(indices.end(), std::begin(adj_indices), std::end(adj_indices));
+    }
+
+    // fill the vertex array with raw vertex positions
+    std::vector<glm::vec3> vertices = {};
+    for (size_t ii = 0; ii < mesh.mNumVertices; ii++) {
+        vertices.push_back(glm::vec3(mesh.mVertices[ii].x, mesh.mVertices[ii].y, mesh.mVertices[ii].z));
+    }
+
+    // now finally we can setup the GPU buffers
+    this->len = indices.size();
+
+    this->vbo.Reserve();
+    this->vao.Reserve();
+    this->ebo.Reserve();
+
+    this->vbo.LoadData(vertices.size() * sizeof(glm::vec3), vertices.data(), GL_STATIC_DRAW);
+
+    this->vbo.Bind();
+    this->vao.SetAttribute(0, 3, GL_FLOAT, sizeof(glm::vec3), 0);
+
+    this->vao.Bind();
+    this->ebo.LoadData(indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
+
+    this->vao.Unbind();
+}
+
+void ShadowMesh::Draw() const
+{
+    this->vao.Bind();
+
+    GL(glDrawElements(GL_TRIANGLES_ADJACENCY, this->len, GL_UNSIGNED_INT, 0));
+
+    this->vao.Unbind();
+}
+
 // Material
 Material::Material(Texture2D* diffuse, Texture2D* specular, f32 gloss)
 {
@@ -119,7 +263,7 @@ static Object ProcessAssimpMesh(const aiScene* scene, const aiMesh* mesh, std::s
         // set the gloss
         material->Get(AI_MATKEY_SHININESS, gloss);
 
-        return Object{Mesh(vertices, indices), Material(diffuse_tex, specular_tex, gloss)};
+        return Object{Mesh(vertices, indices), ShadowMesh(*mesh), Material(diffuse_tex, specular_tex, gloss)};
     }
 
     ABORT("Unhandled assimp loading path");
@@ -159,4 +303,10 @@ void Object::Draw(ShaderProgram& sp) const
 {
     this->mat.Use(sp);
     this->mesh.Draw();
+}
+
+void Object::ComputeShadow(ShaderProgram& sp) const
+{
+    (void)sp;
+    this->shadow_mesh.Draw();
 }

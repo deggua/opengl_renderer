@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -64,6 +65,8 @@ static const std::vector<Vertex> vertices = {
     { {-0.5f, 0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
 };
 
+Light point_light = Light::Point({0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, 2.0f);
+
 PlayerCamera g_Camera = PlayerCamera{
     .pos = glm::vec3(0.0f, 0.0f, 3.0f),
     .up  = glm::vec3(0.0f, 1.0f, 0.0f),
@@ -118,6 +121,8 @@ static void ProcessKeyboardInput(GLFWwindow* window)
     if (length(dir_move) > 0.1f) {
         g_Camera.pos += normalize(dir_move) * move_speed * g_dt;
     }
+
+    point_light.point.pos = g_Camera.pos + 2.0f * dir_forward;
 }
 
 static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
@@ -174,12 +179,76 @@ static void UpdateTime(GLFWwindow* window)
     glfwSetWindowTitle(window, buf);
 }
 
+void message_callback(
+    GLenum        source,
+    GLenum        type,
+    GLuint        id,
+    GLenum        severity,
+    GLsizei       length,
+    const GLchar* message,
+    const void*   user_param)
+{
+    const auto src_str = [source]() {
+        switch (source) {
+            case GL_DEBUG_SOURCE_API:
+                return "API";
+            case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
+                return "WINDOW SYSTEM";
+            case GL_DEBUG_SOURCE_SHADER_COMPILER:
+                return "SHADER COMPILER";
+            case GL_DEBUG_SOURCE_THIRD_PARTY:
+                return "THIRD PARTY";
+            case GL_DEBUG_SOURCE_APPLICATION:
+                return "APPLICATION";
+            case GL_DEBUG_SOURCE_OTHER:
+                return "OTHER";
+        }
+    }();
+
+    const auto type_str = [type]() {
+        switch (type) {
+            case GL_DEBUG_TYPE_ERROR:
+                return "ERROR";
+            case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+                return "DEPRECATED_BEHAVIOR";
+            case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+                return "UNDEFINED_BEHAVIOR";
+            case GL_DEBUG_TYPE_PORTABILITY:
+                return "PORTABILITY";
+            case GL_DEBUG_TYPE_PERFORMANCE:
+                return "PERFORMANCE";
+            case GL_DEBUG_TYPE_MARKER:
+                return "MARKER";
+            case GL_DEBUG_TYPE_OTHER:
+                return "OTHER";
+        }
+    }();
+
+    const auto severity_str = [severity]() {
+        switch (severity) {
+            case GL_DEBUG_SEVERITY_NOTIFICATION:
+                return "NOTIFICATION";
+            case GL_DEBUG_SEVERITY_LOW:
+                return "LOW";
+            case GL_DEBUG_SEVERITY_MEDIUM:
+                return "MEDIUM";
+            case GL_DEBUG_SEVERITY_HIGH:
+                return "HIGH";
+        }
+    }();
+    std::cout << src_str << ", " << type_str << ", " << severity_str << ", " << id << ": " << message << '\n';
+}
+
 void RenderInit(GLFWwindow* window)
 {
     (void)window;
 
     TexturePool.Insert("$NO_DIFFUSE", glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
     TexturePool.Insert("$NO_SPECULAR", glm::vec4(0.0f));
+
+    // GL(glEnable(GL_DEBUG_OUTPUT));
+    // GL(glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS));
+    // GL(glDebugMessageCallback(message_callback, nullptr));
 }
 
 void RenderLoop(GLFWwindow* window)
@@ -192,18 +261,17 @@ void RenderLoop(GLFWwindow* window)
     renderer.Set_Resolution(g_res_w, g_res_h);
     renderer.Clear(rgb_black);
 
-    std::vector<Object> objs = Object::LoadObjects(std::string("assets/skull/12140_Skull_v3_L2.obj"));
-    // std::vector<Object> objs = Object::LoadObjects("assets/sponza/sponza.obj");
+    // std::vector<Object> objs = Object::LoadObjects(std::string("assets/skull/12140_Skull_v3_L2.obj"));
+    std::vector<Object> objs = Object::LoadObjects("assets/sponza/sponza.obj");
     printf("Loaded %zu objects\n", objs.size());
 
     // TODO: how should we construct light sources?
     Light ambient_light = Light::Ambient(rgb_white, 0.1f);
-    Light point_light   = Light::Point({2.0f, 2.0f, 2.0f}, rgb_white, 2.0f);
     Light sun_light     = Light::Sun({0.0f, -1.0f, 0.0f}, rgb_white, 1.0f);
 
-    Light lights[] = {
-        sun_light,
-        // point_light,
+    Light* lights[] = {
+        // sun_light,
+        &point_light,
     };
 
     renderer.Enable(GL_DEPTH_TEST);
@@ -239,7 +307,10 @@ void RenderLoop(GLFWwindow* window)
         // TODO: it's also more efficient to render objects with the same texture/mesh together as well
         // not sure how that could be tracked either
 
-        // do ambient light without blending to set the depth buffer
+        /* ------------------ */
+        // ambient light pass
+        GL(glDisable(GL_STENCIL_TEST));
+
         GL(glBlendFunc(GL_ONE, GL_ZERO));
         GL(glDepthFunc(GL_LESS));
         for (const auto& obj : objs) {
@@ -256,7 +327,44 @@ void RenderLoop(GLFWwindow* window)
             renderer.Render(obj, ambient_light);
         }
 
-        // do the rest of the lights with blending
+        /* ------------------ */
+        // shadow volume pass
+        GL(glEnable(GL_STENCIL_TEST));
+        GL(glEnable(GL_DEPTH_CLAMP));
+        GL(glDisable(GL_CULL_FACE));
+
+        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
+        GL(glDepthMask(GL_FALSE));
+
+        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
+        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
+        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
+
+        for (const auto& obj : objs) {
+            glm::mat4 mtx_world = glm::mat4(1.0f);
+            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
+            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
+            renderer.Set_WorldMatrix(mtx_world);
+
+            glm::mat4 mtx_normal = glm::mat4(1.0f);
+            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
+            renderer.Set_NormalMatrix(mtx_normal);
+
+            renderer.ComputeShadows(obj, point_light);
+        }
+
+        GL(glDisable(GL_DEPTH_CLAMP));
+        GL(glEnable(GL_CULL_FACE));
+
+        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+        GL(glDepthMask(GL_TRUE));
+
+        /* ------------------ */
+        // direct lighting pass
+        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
+        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_KEEP, GL_KEEP));
+        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_KEEP, GL_KEEP));
         GL(glBlendFunc(GL_ONE, GL_ONE));
         GL(glDepthFunc(GL_LEQUAL));
         for (const auto& light : lights) {
@@ -271,7 +379,7 @@ void RenderLoop(GLFWwindow* window)
                 mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
                 renderer.Set_NormalMatrix(mtx_normal);
 
-                renderer.Render(obj, light);
+                renderer.Render(obj, *light);
             }
         }
 
@@ -311,6 +419,7 @@ int main()
     }
 
     glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
+    glfwSwapInterval(0);
 
     RenderInit(window);
     RenderLoop(window);

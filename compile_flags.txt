@@ -13,6 +13,7 @@
 -Wno-nested-anon-types
 -Wno-unused-command-line-argument
 -Wno-language-extension-token
+-Wno-c99-designator
 
 -lopengl32
 -lglfw3

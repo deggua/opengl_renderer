@@ -1,5 +1,7 @@
 #pragma once
 
+#include <assimp/scene.h>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -15,6 +17,8 @@ struct Material {
     Texture2D* specular;
     f32        gloss;
 
+    // TODO: implement
+    // Material(aiMaterial& mat);
     Material(Texture2D* diffuse, Texture2D* specular, f32 gloss);
 
     void Use(ShaderProgram& sp) const;
@@ -27,7 +31,6 @@ struct Vertex {
 };
 
 // TODO: mesh pool
-// TODO: separate Mesh from Object (e.g. pure geometry & indicies vs geometry + texture)
 struct Mesh {
     size_t len;
 
@@ -35,21 +38,36 @@ struct Mesh {
     VBO vbo;
     EBO ebo;
 
-    // TODO: OBJ loading, etc
+    // TODO: implement
+    // Mesh(const aiMesh& mesh);
     Mesh(const std::vector<Vertex>& vertices, const std::vector<GLuint>& indices);
 
     void Draw() const;
 };
 
+struct ShadowMesh {
+    size_t len;
+
+    VAO vao;
+    VBO vbo;
+    EBO ebo;
+
+    ShadowMesh(const aiMesh& mesh);
+
+    void Draw() const;
+};
+
 struct Object {
-    Mesh     mesh;
-    Material mat;
+    Mesh       mesh;
+    ShadowMesh shadow_mesh;
+    Material   mat;
 
     static std::vector<Object> LoadObjects(std::string_view file_path);
 
     // Object(const Mesh& mesh, const Material& mat);
 
     void Draw(ShaderProgram& sp) const;
+    void ComputeShadow(ShaderProgram& sp) const;
 };
 
 // TODO: we should have a way to cache assets in CPU memory so they're faster to load once they get unloaded

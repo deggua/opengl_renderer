@@ -91,10 +91,11 @@ struct Renderer {
         Ambient = 0,
         Point,
         Spot,
-        Sun
+        Sun,
     };
 
-    ShaderProgram shaders[4] = {};
+    ShaderProgram shaders[4]    = {};
+    ShaderProgram shadow_volume = {};
 
     Renderer();
 
@@ -108,4 +109,5 @@ struct Renderer {
     void Enable(GLenum setting);
     void Clear(const glm::vec3& color);
     void Render(const Object& obj, const Light& light);
+    void ComputeShadows(const Object& obj, const Light& light);
 };

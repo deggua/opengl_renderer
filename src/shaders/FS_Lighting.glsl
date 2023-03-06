@@ -41,12 +41,12 @@ struct AmbientLight {
 };
 
 // in
-in vec2 g_frag_tex_coord;
-in vec3 g_frag_normal;
-in vec3 g_frag_pos;
+in vec3 vo_vtx_pos;
+in vec3 vo_vtx_normal;
+in vec2 vo_vtx_texcoord;
 
 // out
-out vec4 g_frag_color;
+out vec4 fo_color;
 
 // Phong lighting model
 vec4 ComputeAmbientLight(vec3 light_color, vec4 obj_diffuse)
@@ -90,34 +90,21 @@ float ComputeLightFalloff(vec3 light_pos, vec3 frag_pos)
 uniform vec3     g_view_pos;
 uniform Material g_material;
 
-// SUN LIGHT
 #if LIGHT_TYPE == SUN_LIGHT
 uniform SunLight g_light_source;
 
-vec4 ComputeLighting(
-    SunLight light,
-    vec4     obj_diffuse,
-    vec4     obj_specular,
-    float    obj_gloss,
-    vec3     frag_pos,
-    vec3     frag_norm,
-    vec3     view_pos)
-{
-    vec3 frag2view_dir  = normalize(view_pos - frag_pos);
-    vec3 frag2light_dir = -light.dir;
-
-    vec4 diffuse_light = ComputeDiffuseLight(light.color, obj_diffuse, frag_norm, frag2light_dir);
-    vec4 specular_light
-        = ComputeSpecularLight(light.color, obj_specular, obj_gloss, frag_norm, frag2light_dir, frag2view_dir);
-    vec4 total_light = diffuse_light + specular_light;
-
-    return total_light;
-}
-
-// AMBIENT LIGHT
 #elif LIGHT_TYPE == AMBIENT_LIGHT
 uniform AmbientLight g_light_source;
 
+#elif LIGHT_TYPE == POINT_LIGHT
+uniform PointLight g_light_source;
+
+#elif LIGHT_TYPE == SPOT_LIGHT
+uniform SpotLight g_light_source;
+
+#endif
+
+// Light source computation
 vec4 ComputeLighting(
     AmbientLight light,
     vec4         obj_diffuse,
@@ -131,10 +118,6 @@ vec4 ComputeLighting(
 
     return total_light;
 }
-
-// POINT LIGHT
-#elif LIGHT_TYPE == POINT_LIGHT
-uniform PointLight g_light_source;
 
 vec4 ComputeLighting(
     PointLight light,
@@ -159,10 +142,6 @@ vec4 ComputeLighting(
 
     return total_light;
 }
-
-// SPOT LIGHT
-#elif LIGHT_TYPE == SPOT_LIGHT
-uniform SpotLight g_light_source;
 
 vec4 ComputeLighting(
     SpotLight light,
@@ -194,22 +173,41 @@ vec4 ComputeLighting(
     return total_light;
 }
 
-#endif
+vec4 ComputeLighting(
+    SunLight light,
+    vec4     obj_diffuse,
+    vec4     obj_specular,
+    float    obj_gloss,
+    vec3     frag_pos,
+    vec3     frag_norm,
+    vec3     view_pos)
+{
+    vec3 frag2view_dir  = normalize(view_pos - frag_pos);
+    vec3 frag2light_dir = -light.dir;
 
+    vec4 diffuse_light = ComputeDiffuseLight(light.color, obj_diffuse, frag_norm, frag2light_dir);
+    vec4 specular_light
+        = ComputeSpecularLight(light.color, obj_specular, obj_gloss, frag_norm, frag2light_dir, frag2view_dir);
+    vec4 total_light = diffuse_light + specular_light;
+
+    return total_light;
+}
+
+// Main program
 void main()
 {
-    vec3 frag_norm = normalize(g_frag_normal); // TODO: is normalizing necessary?
+    vec3 frag_norm = normalize(vo_vtx_normal); // TODO: is normalizing necessary?
 
-    vec4  obj_diffuse  = texture(g_material.diffuse, g_frag_tex_coord);
-    vec4  obj_specular = texture(g_material.specular, g_frag_tex_coord);
+    vec4  obj_diffuse  = texture(g_material.diffuse, vo_vtx_texcoord);
+    vec4  obj_specular = texture(g_material.specular, vo_vtx_texcoord);
     float obj_gloss    = g_material.gloss;
 
     if (obj_diffuse.a < 0.5) {
         discard;
     } else {
         vec4 light_color
-            = ComputeLighting(g_light_source, obj_diffuse, obj_specular, obj_gloss, g_frag_pos, frag_norm, g_view_pos);
+            = ComputeLighting(g_light_source, obj_diffuse, obj_specular, obj_gloss, vo_vtx_pos, frag_norm, g_view_pos);
 
-        g_frag_color = light_color;
+        fo_color = light_color;
     }
 }

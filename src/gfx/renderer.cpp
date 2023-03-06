@@ -7,8 +7,11 @@
 #include "common.hpp"
 #include "gfx/opengl.hpp"
 
-SHADER_FILE(VertexShader);
-SHADER_FILE(FragmentShader);
+SHADER_FILE(VS_Common);
+SHADER_FILE(FS_Lighting);
+SHADER_FILE(FS_ShadowVolume);
+SHADER_FILE(GS_ShadowVolume);
+SHADER_FILE(VS_ShadowVolume);
 
 struct String {
     size_t      len;
@@ -164,17 +167,23 @@ glm::mat4 PlayerCamera::ViewMatrix() const
 // Renderer
 Renderer::Renderer()
 {
-    Shader vs_default = CompileShader(GL_VERTEX_SHADER, VertexShader.src, VertexShader.len);
+    Shader vs_default = CompileShader(GL_VERTEX_SHADER, VS_Common.src, VS_Common.len);
 
-    Shader fs_ambient = CompileLightingShader(LightType::Ambient, FragmentShader.src, FragmentShader.len);
-    Shader fs_point   = CompileLightingShader(LightType::Point, FragmentShader.src, FragmentShader.len);
-    Shader fs_spot    = CompileLightingShader(LightType::Spot, FragmentShader.src, FragmentShader.len);
-    Shader fs_sun     = CompileLightingShader(LightType::Sun, FragmentShader.src, FragmentShader.len);
+    Shader fs_ambient = CompileLightingShader(LightType::Ambient, FS_Lighting.src, FS_Lighting.len);
+    Shader fs_point   = CompileLightingShader(LightType::Point, FS_Lighting.src, FS_Lighting.len);
+    Shader fs_spot    = CompileLightingShader(LightType::Spot, FS_Lighting.src, FS_Lighting.len);
+    Shader fs_sun     = CompileLightingShader(LightType::Sun, FS_Lighting.src, FS_Lighting.len);
+
+    Shader gs_shadow_volume = CompileShader(GL_GEOMETRY_SHADER, GS_ShadowVolume.src, GS_ShadowVolume.len);
+    Shader fs_shadow_volume = CompileShader(GL_FRAGMENT_SHADER, FS_ShadowVolume.src, FS_ShadowVolume.len);
+    Shader vs_shadow_volume = CompileShader(GL_VERTEX_SHADER, VS_ShadowVolume.src, VS_ShadowVolume.len);
 
     this->shaders[(size_t)Renderer::ShaderType::Ambient] = LinkShaders(vs_default, fs_ambient);
     this->shaders[(size_t)Renderer::ShaderType::Point]   = LinkShaders(vs_default, fs_point);
     this->shaders[(size_t)Renderer::ShaderType::Spot]    = LinkShaders(vs_default, fs_spot);
     this->shaders[(size_t)Renderer::ShaderType::Sun]     = LinkShaders(vs_default, fs_sun);
+
+    this->shadow_volume = LinkShaders(vs_shadow_volume, gs_shadow_volume, fs_shadow_volume);
 
     // TODO: might need different handling if more textures of each type are enabled
     for (ShaderProgram& sp : this->shaders) {
@@ -195,6 +204,9 @@ void Renderer::Set_NormalMatrix(const glm::mat3& mtx_normal)
         sp.UseProgram();
         sp.SetUniform("g_mtx_normal", mtx_normal);
     }
+
+    this->shadow_volume.UseProgram();
+    this->shadow_volume.SetUniform("g_mtx_normal", mtx_normal);
 }
 
 void Renderer::Set_WorldMatrix(const glm::mat4& mtx_world)
@@ -204,6 +216,9 @@ void Renderer::Set_WorldMatrix(const glm::mat4& mtx_world)
         sp.UseProgram();
         sp.SetUniform("g_mtx_world", mtx_world);
     }
+
+    this->shadow_volume.UseProgram();
+    this->shadow_volume.SetUniform("g_mtx_world", mtx_world);
 }
 
 void Renderer::Set_ViewMatrix(const glm::mat4& mtx_view)
@@ -213,6 +228,9 @@ void Renderer::Set_ViewMatrix(const glm::mat4& mtx_view)
         sp.UseProgram();
         sp.SetUniform("g_mtx_view", mtx_view);
     }
+
+    this->shadow_volume.UseProgram();
+    this->shadow_volume.SetUniform("g_mtx_view", mtx_view);
 }
 
 void Renderer::Set_ScreenMatrix(const glm::mat4& mtx_screen)
@@ -222,6 +240,9 @@ void Renderer::Set_ScreenMatrix(const glm::mat4& mtx_screen)
         sp.UseProgram();
         sp.SetUniform("g_mtx_screen", mtx_screen);
     }
+
+    this->shadow_volume.UseProgram();
+    this->shadow_volume.SetUniform("g_mtx_screen", mtx_screen);
 }
 
 void Renderer::Set_ViewPosition(const glm::vec3& view_pos)
@@ -231,6 +252,9 @@ void Renderer::Set_ViewPosition(const glm::vec3& view_pos)
         sp.UseProgram();
         sp.SetUniform("g_view_pos", view_pos);
     }
+
+    this->shadow_volume.UseProgram();
+    this->shadow_volume.SetUniform("g_view_pos", view_pos);
 }
 
 void Renderer::Enable(GLenum setting)
@@ -242,7 +266,7 @@ void Renderer::Clear(const glm::vec3& color)
 {
     // TODO: this doesn't need to be set with every clear, we could track its value
     GL(glClearColor(color.r, color.g, color.b, 1.0f));
-    GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+    GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 }
 
 // TODO: we should store the current program in the renderer
@@ -250,46 +274,46 @@ void Renderer::Render(const Object& obj, const Light& light)
 {
     // TODO: we don't really need to send the cam_pos + view matrix every render call
 
-    ShaderProgram* sp_cur = nullptr;
+    ShaderProgram* sp = nullptr;
 
     // set lighting parameters
     switch (light.type) {
         case LightType::Ambient: {
-            sp_cur = &this->shaders[(size_t)Renderer::ShaderType::Ambient];
-            sp_cur->UseProgram();
+            sp = &this->shaders[(size_t)Renderer::ShaderType::Ambient];
+            sp->UseProgram();
 
-            sp_cur->SetUniform("g_light_source.color", light.ambient.color * light.ambient.intensity);
+            sp->SetUniform("g_light_source.color", light.ambient.color * light.ambient.intensity);
         } break;
 
         case LightType::Point: {
-            sp_cur = &this->shaders[(size_t)Renderer::ShaderType::Point];
-            sp_cur->UseProgram();
+            sp = &this->shaders[(size_t)Renderer::ShaderType::Point];
+            sp->UseProgram();
 
-            sp_cur->SetUniform("g_light_source.pos", light.point.pos);
+            sp->SetUniform("g_light_source.pos", light.point.pos);
 
-            sp_cur->SetUniform("g_light_source.color", light.point.color * light.point.intensity);
+            sp->SetUniform("g_light_source.color", light.point.color * light.point.intensity);
         } break;
 
         case LightType::Spot: {
-            sp_cur = &this->shaders[(size_t)Renderer::ShaderType::Spot];
-            sp_cur->UseProgram();
+            sp = &this->shaders[(size_t)Renderer::ShaderType::Spot];
+            sp->UseProgram();
 
-            sp_cur->SetUniform("g_light_source.pos", light.spot.pos);
-            sp_cur->SetUniform("g_light_source.dir", light.spot.dir);
+            sp->SetUniform("g_light_source.pos", light.spot.pos);
+            sp->SetUniform("g_light_source.dir", light.spot.dir);
 
-            sp_cur->SetUniform("g_light_source.inner_cutoff", light.spot.inner_cutoff);
-            sp_cur->SetUniform("g_light_source.outer_cutoff", light.spot.outer_cutoff);
+            sp->SetUniform("g_light_source.inner_cutoff", light.spot.inner_cutoff);
+            sp->SetUniform("g_light_source.outer_cutoff", light.spot.outer_cutoff);
 
-            sp_cur->SetUniform("g_light_source.color", light.spot.color * light.spot.intensity);
+            sp->SetUniform("g_light_source.color", light.spot.color * light.spot.intensity);
         } break;
 
         case LightType::Sun: {
-            sp_cur = &this->shaders[(size_t)Renderer::ShaderType::Sun];
-            sp_cur->UseProgram();
+            sp = &this->shaders[(size_t)Renderer::ShaderType::Sun];
+            sp->UseProgram();
 
-            sp_cur->SetUniform("g_light_source.dir", light.sun.dir);
+            sp->SetUniform("g_light_source.dir", light.sun.dir);
 
-            sp_cur->SetUniform("g_light_source.color", light.sun.color * light.sun.intensity);
+            sp->SetUniform("g_light_source.color", light.sun.color * light.sun.intensity);
         } break;
 
         default: {
@@ -297,5 +321,15 @@ void Renderer::Render(const Object& obj, const Light& light)
         } break;
     }
 
-    obj.Draw(*sp_cur);
+    obj.Draw(*sp);
+}
+
+void Renderer::ComputeShadows(const Object& obj, const Light& light)
+{
+    ShaderProgram& sp = this->shadow_volume;
+
+    sp.UseProgram();
+    sp.SetUniform("g_light_pos", light.point.pos);
+
+    obj.ComputeShadow(sp);
 }
