@@ -24,51 +24,68 @@ struct Material {
 };
 
 struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 norm;
-    glm::vec2 tex;
+    glm::vec3 pos  = {0.0f, 0.0f, 0.0f};
+    glm::vec3 norm = {0.0f, 0.0f, 0.0f};
+    glm::vec2 tex  = {0.0f, 0.0f};
 };
 
 // TODO: mesh pool
-struct Mesh {
-    usize len;
+// TODO: it's a little wasteful to construct a VAO + EBO for shadows if we're not going to draw them
+struct Geometry {
+    usize len_visual;
+    usize len_shadow;
 
-    VAO vao;
+    VAO vao_visual;
+    VAO vao_shadow;
     VBO vbo;
-    EBO ebo;
+    EBO ebo_visual;
+    EBO ebo_shadow;
 
-    Mesh(const aiMesh& mesh);
+    Geometry(const aiMesh& mesh);
 
-    void Draw() const;
+    void DrawVisual(ShaderProgram& sp) const;
+    void DrawShadow(ShaderProgram& sp) const;
 };
 
-// TODO: ShadowMesh and Mesh could share the vertices buffer
-// TODO: we need some way to have Meshes that cast shadows and meshes that don't while exploiting the above property
-struct ShadowMesh {
-    usize len;
+struct Model {
+    Geometry geometry;
+    Material material;
 
-    VAO vao;
-    VBO vbo;
-    EBO ebo;
+    Model(const Geometry& geometry, const Material& material);
 
-    ShadowMesh(const aiMesh& mesh);
-
-    void Draw() const;
+    void DrawVisual(ShaderProgram& sp) const;
+    void DrawShadow(ShaderProgram& sp) const;
 };
 
+// TODO: I don't like that we have to separately expose draw shadows and draw visual
+// but the way shaders work doesn't facilitate a better interface in the current arch
+// TODO: we could avoid having to recompute the matrices if we cached the world/normal matrices
 struct Object {
-    Mesh       mesh;
-    ShadowMesh shadow_mesh;
-    Material   material;
+    std::vector<Model> models;
 
-    glm::vec3 position;
+    glm::vec3 scale = {1.0f, 1.0f, 1.0f};
+    glm::vec3 pos   = {0.0f, 0.0f, 0.0f};
+    // TODO: rotation
 
-    Object(const Mesh& mesh, const ShadowMesh& shadow_mesh, const Material& material);
+    bool casts_shadows = false;
 
-    static std::vector<Object> LoadObjects(std::string_view file_path);
+    Object(std::string_view file_path);
 
-    void Draw(ShaderProgram& sp) const;
-    void ComputeShadow(ShaderProgram& sp) const;
+    void DrawVisual(ShaderProgram& sp) const;
+    void DrawShadow(ShaderProgram& sp) const;
+
+    glm::vec3 Position() const;
+    Object&   Position(const glm::vec3& new_pos);
+
+    glm::vec3 Scale() const;
+    Object&   Scale(const glm::vec3& new_scale);
+    Object&   Scale(f32 new_scale);
+
+    bool    CastsShadows() const;
+    Object& CastsShadows(bool casts_shadows);
+
+    glm::mat4 WorldMatrix() const;
+    glm::mat3 NormalMatrix() const;
 };
 
 // TODO: we should have a way to cache assets in CPU memory so they're faster to load once they get unloaded

@@ -20,55 +20,10 @@
 #include "gfx/opengl.hpp"
 #include "gfx/renderer.hpp"
 
-static const std::vector<Vertex> vertices = {
-  // positions            // normals           // texture coords
-    { {0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
-    {  {0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
-    { {-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
-    {  {0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
-
-    { {-0.5f, -0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
-    {  {0.5f, -0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
-    {   {0.5f, 0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-    {   {0.5f, 0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-    {  {-0.5f, 0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-    { {-0.5f, -0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
-
-    {  {-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-    { {-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
-    { {-0.5f, -0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-    {  {-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-
-    {   {0.5f, 0.5f, 0.5f},  {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-    { {0.5f, -0.5f, -0.5f},  {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
-    {  {0.5f, 0.5f, -0.5f},  {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
-    {  {0.5f, -0.5f, 0.5f},  {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-    { {0.5f, -0.5f, -0.5f},  {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
-    {   {0.5f, 0.5f, 0.5f},  {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
-    { {0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
-    {  {0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
-    {  {0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
-    { {-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
-
-    { {-0.5f, 0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-    {   {0.5f, 0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    {  {0.5f, 0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
-    {  {-0.5f, 0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-    {   {0.5f, 0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    { {-0.5f, 0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-};
-
 PointLight point_light = PointLight{
     {0.0f, 0.0f, 0.0f},
     {1.0f, 1.0f, 1.0f},
-    2.0f
+    10.0f
 };
 
 PlayerCamera g_Camera = PlayerCamera{
@@ -191,19 +146,26 @@ void RenderInit(GLFWwindow* window)
     TexturePool.Load(DefaultTexture_Specular, true, glm::vec4(0.0f));
 }
 
+// TODO: I need to look more carefully at the depth test function used in each pass
+// I think it might partially be responsible for some z-fighting I'm seeing
+
+// TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but apparently
+// using discard (for the alpha test) effectively disables early-z
+
 void RenderLoop(GLFWwindow* window)
 {
     constexpr f32       fov       = 70.0f;
     constexpr glm::vec3 rgb_black = {0.0f, 0.0f, 0.0f};
     constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
 
-    Renderer renderer = Renderer(true);
+    Renderer renderer = Renderer(RENDER_ENABLE_OPENGL_LOGGING);
     renderer.Set_Resolution(g_res_w, g_res_h);
     renderer.Clear(rgb_black);
 
-    // std::vector<Object> objs = Object::LoadObjects(std::string("assets/skull/12140_Skull_v3_L2.obj"));
-    std::vector<Object> objs = Object::LoadObjects("assets/sponza/sponza.obj");
-    printf("Loaded %zu objects\n", objs.size());
+    std::vector<Object> objs = {
+        Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
+        Object("assets/skull/12140_Skull_v3_L2.obj").CastsShadows(true).Scale(0.01f).Position({0, 3, 0}),
+    };
 
     // TODO: how should we construct light sources?
     AmbientLight ambient_light = AmbientLight{rgb_white, 0.1f};
@@ -244,28 +206,17 @@ void RenderLoop(GLFWwindow* window)
         // TODO: it's also more efficient to render objects with the same texture/mesh together as well
         // not sure how that could be tracked either
 
-        /* ------------------ */
-        // ambient light pass
+        /* --- Pass :: Ambient Light + Depth --- */
         GL(glDisable(GL_STENCIL_TEST));
 
         GL(glBlendFunc(GL_ONE, GL_ZERO));
         GL(glDepthFunc(GL_LESS));
+
         for (const auto& obj : objs) {
-            glm::mat4 mtx_world = glm::mat4(1.0f);
-            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
-            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
-            renderer.Set_WorldMatrix(mtx_world);
-
-            glm::mat4 mtx_normal = glm::mat4(1.0f);
-            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
-            renderer.Set_NormalMatrix(mtx_normal);
-
             renderer.Render_Light(ambient_light, obj);
         }
 
-        /* ------------------ */
-        // shadow volume pass
+        /* --- Pass :: Point Light :: Shadow Volume --- */
         GL(glEnable(GL_STENCIL_TEST));
         GL(glEnable(GL_DEPTH_CLAMP));
         GL(glDisable(GL_CULL_FACE));
@@ -276,37 +227,12 @@ void RenderLoop(GLFWwindow* window)
         GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
         GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
         GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
-#if 1
+
+        GL(glDepthFunc(GL_LESS));
+
         for (const auto& obj : objs) {
-            glm::mat4 mtx_world = glm::mat4(1.0f);
-            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
-            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
-            renderer.Set_WorldMatrix(mtx_world);
-
-            glm::mat4 mtx_normal = glm::mat4(1.0f);
-            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
-            renderer.Set_NormalMatrix(mtx_normal);
-
             renderer.Render_Shadow(point_light, obj);
         }
-#endif
-
-#if 1
-        for (const auto& obj : objs) {
-            glm::mat4 mtx_world = glm::mat4(1.0f);
-            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
-            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
-            renderer.Set_WorldMatrix(mtx_world);
-
-            glm::mat4 mtx_normal = glm::mat4(1.0f);
-            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
-            renderer.Set_NormalMatrix(mtx_normal);
-
-            renderer.Render_Shadow(sun_light, obj);
-        }
-#endif
 
         GL(glDisable(GL_DEPTH_CLAMP));
         GL(glEnable(GL_CULL_FACE));
@@ -314,41 +240,52 @@ void RenderLoop(GLFWwindow* window)
         GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
         GL(glDepthMask(GL_TRUE));
 
-        /* ------------------ */
-        // direct lighting pass
+        /* --- Pass :: Point Light :: Direct Light --- */
         GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
-        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_KEEP, GL_KEEP));
-        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_KEEP, GL_KEEP));
+        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
         GL(glBlendFunc(GL_ONE, GL_ONE));
+
         GL(glDepthFunc(GL_LEQUAL));
 
-#if 1
         for (const auto& obj : objs) {
-            glm::mat4 mtx_world = glm::mat4(1.0f);
-            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
-            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
-            renderer.Set_WorldMatrix(mtx_world);
-
-            glm::mat4 mtx_normal = glm::mat4(1.0f);
-            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
-            renderer.Set_NormalMatrix(mtx_normal);
-
             renderer.Render_Light(point_light, obj);
         }
-#endif
+
+        // clear the stencil buffer for the second shadow pass
+        GL(glClear(GL_STENCIL_BUFFER_BIT));
+
+        /* --- Pass :: Sun Light :: Shadow Volume --- */
+        GL(glEnable(GL_STENCIL_TEST));
+        GL(glEnable(GL_DEPTH_CLAMP));
+        GL(glDisable(GL_CULL_FACE));
+
+        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
+        GL(glDepthMask(GL_FALSE));
+
+        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
+        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
+        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
+
+        GL(glDepthFunc(GL_LESS));
 
         for (const auto& obj : objs) {
-            glm::mat4 mtx_world = glm::mat4(1.0f);
-            mtx_world           = glm::scale(mtx_world, glm::vec3(0.01f));
-            // mtx_world           = glm::rotate(mtx_world, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-            mtx_world = glm::translate(mtx_world, {0.0f, 0.0f, 0.0f});
-            renderer.Set_WorldMatrix(mtx_world);
+            renderer.Render_Shadow(sun_light, obj);
+        }
 
-            glm::mat4 mtx_normal = glm::mat4(1.0f);
-            mtx_normal           = glm::mat3(glm::transpose(glm::inverse(mtx_world)));
-            renderer.Set_NormalMatrix(mtx_normal);
+        GL(glDisable(GL_DEPTH_CLAMP));
+        GL(glEnable(GL_CULL_FACE));
 
+        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+        GL(glDepthMask(GL_TRUE));
+
+        /* --- Pass :: Sun Light :: Direct Lighting --- */
+        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
+        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
+        GL(glBlendFunc(GL_ONE, GL_ONE));
+
+        GL(glDepthFunc(GL_LEQUAL));
+
+        for (const auto& obj : objs) {
             renderer.Render_Light(sun_light, obj);
         }
 

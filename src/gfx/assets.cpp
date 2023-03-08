@@ -10,61 +10,6 @@
 
 AssetPool<Texture2D> TexturePool(32);
 
-// Mesh
-Mesh::Mesh(const aiMesh& mesh)
-{
-    std::vector<Vertex> vertices;
-    std::vector<GLuint> indices;
-
-    for (size_t ii = 0; ii < mesh.mNumVertices; ii++) {
-        Vertex vert = Vertex{
-            {mesh.mVertices[ii].x, mesh.mVertices[ii].y, mesh.mVertices[ii].z},
-            {mesh.mNormals[ii].x, mesh.mNormals[ii].y, mesh.mNormals[ii].z},
-            {0.0f, 0.0f}
-        };
-
-        if (mesh.mTextureCoords[0]) {
-            vert.tex.x = mesh.mTextureCoords[0][ii].x;
-            vert.tex.y = mesh.mTextureCoords[0][ii].y;
-        }
-
-        vertices.push_back(vert);
-    }
-
-    for (size_t ii = 0; ii < mesh.mNumFaces; ii++) {
-        aiFace face = mesh.mFaces[ii];
-        // TODO: is this correct?
-        indices.insert(indices.end(), face.mIndices, face.mIndices + face.mNumIndices);
-    }
-
-    this->len = indices.size();
-
-    this->vbo.Reserve();
-    this->vao.Reserve();
-    this->ebo.Reserve();
-
-    this->vbo.LoadData(vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
-
-    this->vbo.Bind();
-    this->vao.SetAttribute(0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, pos));
-    this->vao.SetAttribute(1, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, norm));
-    this->vao.SetAttribute(2, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
-
-    this->vao.Bind();
-    this->ebo.LoadData(indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
-
-    this->vao.Unbind();
-}
-
-void Mesh::Draw() const
-{
-    this->vao.Bind();
-
-    GL(glDrawElements(GL_TRIANGLES, this->len, GL_UNSIGNED_INT, 0));
-
-    this->vao.Unbind();
-}
-
 using VertexId = u32;
 
 struct OppositeVertexId {
@@ -76,13 +21,13 @@ struct OppositeVertexId {
         this->vtx_a = vtx_a;
     }
 
-    void SetVtxB(VertexId vtx_b)
+    void SetVtxB(VertexId vtx)
     {
         if (this->has_b) {
             ABORT("Degenerate mesh encountered in triangle adjacency calculation");
         }
 
-        this->vtx_b = vtx_b;
+        this->vtx_b = vtx;
         this->has_b = true;
     }
 
@@ -129,9 +74,7 @@ struct std::hash<EdgeId> {
     }
 };
 
-// TODO: certain types of geometry won't work properly with this and we don't detect it
-// example: if an edge has more than 2 opposite vertices (like a multi-planar grass mesh where 1 edge shares 3+ tris)
-ShadowMesh::ShadowMesh(const aiMesh& mesh)
+static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
 {
     // build a map from an edge to its opposite vertices
     std::unordered_map<EdgeId, OppositeVertexId> edge_map = {};
@@ -180,37 +123,85 @@ ShadowMesh::ShadowMesh(const aiMesh& mesh)
         indices.insert(indices.end(), std::begin(adj_indices), std::end(adj_indices));
     }
 
-    // fill the vertex array with raw vertex positions
-    std::vector<glm::vec3> vertices = {};
-    for (usize ii = 0; ii < mesh.mNumVertices; ii++) {
-        vertices.push_back(glm::vec3(mesh.mVertices[ii].x, mesh.mVertices[ii].y, mesh.mVertices[ii].z));
-    }
-
-    // now finally we can setup the GPU buffers
-    this->len = indices.size();
-
-    this->vbo.Reserve();
-    this->vao.Reserve();
-    this->ebo.Reserve();
-
-    this->vbo.LoadData(vertices.size() * sizeof(glm::vec3), vertices.data(), GL_STATIC_DRAW);
-
-    this->vbo.Bind();
-    this->vao.SetAttribute(0, 3, GL_FLOAT, sizeof(glm::vec3), 0);
-
-    this->vao.Bind();
-    this->ebo.LoadData(indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
-
-    this->vao.Unbind();
+    return indices;
 }
 
-void ShadowMesh::Draw() const
+// Geometry
+Geometry::Geometry(const aiMesh& mesh)
 {
-    this->vao.Bind();
+    // collect indices for visual component
+    std::vector<GLuint> shadow_indices = ComputeAdjacencyIndices(mesh);
+    std::vector<GLuint> visual_indices = {};
+    for (size_t ii = 0; ii < mesh.mNumFaces; ii++) {
+        aiFace face = mesh.mFaces[ii];
+        visual_indices.insert(visual_indices.end(), face.mIndices, face.mIndices + face.mNumIndices);
+    }
 
-    GL(glDrawElements(GL_TRIANGLES_ADJACENCY, this->len, GL_UNSIGNED_INT, 0));
+    // collect vertex positions, normals, tex coords
+    std::vector<Vertex> vertices = {};
+    for (size_t ii = 0; ii < mesh.mNumVertices; ii++) {
+        Vertex vert = Vertex{
+            {mesh.mVertices[ii].x, mesh.mVertices[ii].y, mesh.mVertices[ii].z},
+            {mesh.mNormals[ii].x, mesh.mNormals[ii].y, mesh.mNormals[ii].z},
+            {0.0f, 0.0f}
+        };
 
-    this->vao.Unbind();
+        if (mesh.mTextureCoords[0]) {
+            vert.tex.x = mesh.mTextureCoords[0][ii].x;
+            vert.tex.y = mesh.mTextureCoords[0][ii].y;
+        }
+
+        vertices.push_back(vert);
+    }
+
+    this->vao_visual.Reserve();
+    this->vao_shadow.Reserve();
+    this->vbo.Reserve();
+    this->ebo_visual.Reserve();
+    this->ebo_shadow.Reserve();
+
+    this->vbo.LoadData(vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
+
+    this->vbo.Bind();
+
+    this->vao_visual.SetAttribute(0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, pos));
+    this->vao_visual.SetAttribute(1, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, norm));
+    this->vao_visual.SetAttribute(2, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
+
+    this->vao_shadow.SetAttribute(0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, pos));
+    this->vao_shadow.SetAttribute(1, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, norm));
+    this->vao_shadow.SetAttribute(2, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
+
+    this->vao_visual.Bind();
+    this->ebo_visual.LoadData(visual_indices.size() * sizeof(GLuint), visual_indices.data(), GL_STATIC_DRAW);
+
+    this->vao_shadow.Bind();
+    this->ebo_shadow.LoadData(shadow_indices.size() * sizeof(GLuint), shadow_indices.data(), GL_STATIC_DRAW);
+
+    this->len_visual = visual_indices.size();
+    this->len_shadow = shadow_indices.size();
+}
+
+void Geometry::DrawVisual(ShaderProgram& sp) const
+{
+    (void)sp;
+
+    this->vao_visual.Bind();
+
+    GL(glDrawElements(GL_TRIANGLES, this->len_visual, GL_UNSIGNED_INT, 0));
+
+    this->vao_visual.Unbind();
+}
+
+void Geometry::DrawShadow(ShaderProgram& sp) const
+{
+    (void)sp;
+
+    this->vao_shadow.Bind();
+
+    GL(glDrawElements(GL_TRIANGLES_ADJACENCY, this->len_shadow, GL_UNSIGNED_INT, 0));
+
+    this->vao_shadow.Unbind();
 }
 
 // Material
@@ -262,11 +253,25 @@ void Material::Use(ShaderProgram& sp) const
     sp.SetUniform("material.gloss", this->gloss);
 }
 
-static Object ProcessAssimpMesh(const aiScene& ai_scene, const aiMesh& ai_mesh, std::string_view directory)
+/* --- Model --- */
+Model::Model(const Geometry& geometry, const Material& material) : geometry(geometry), material(material) {}
+
+void Model::DrawVisual(ShaderProgram& sp) const
 {
-    Mesh       mesh        = Mesh(ai_mesh);
-    ShadowMesh shadow_mesh = ShadowMesh(ai_mesh);
-    Material   material;
+    this->material.Use(sp);
+    this->geometry.DrawVisual(sp);
+}
+
+void Model::DrawShadow(ShaderProgram& sp) const
+{
+    this->geometry.DrawShadow(sp);
+}
+
+/* --- Object --- */
+static Model ProcessAssimpMesh(const aiScene& ai_scene, const aiMesh& ai_mesh, std::string_view directory)
+{
+    Geometry geometry = Geometry(ai_mesh);
+    Material material;
 
     // if it has textures then use them, otherwise just use the default material
     if (ai_mesh.mMaterialIndex >= 0) {
@@ -277,11 +282,11 @@ static Object ProcessAssimpMesh(const aiScene& ai_scene, const aiMesh& ai_mesh, 
     }
 
     // TODO: proper constructor for object
-    return Object(mesh, shadow_mesh, material);
+    return Model(geometry, material);
 }
 
 static void
-ProcessAssimpNode(std::vector<Object>& objs, const aiScene& scene, const aiNode& node, std::string_view directory)
+ProcessAssimpNode(std::vector<Model>& objs, const aiScene& scene, const aiNode& node, std::string_view directory)
 {
     for (size_t ii = 0; ii < node.mNumMeshes; ii++) {
         aiMesh* mesh = scene.mMeshes[node.mMeshes[ii]];
@@ -293,36 +298,94 @@ ProcessAssimpNode(std::vector<Object>& objs, const aiScene& scene, const aiNode&
     }
 }
 
-// Object
-std::vector<Object> Object::LoadObjects(std::string_view file_path)
+Object::Object(std::string_view file_path)
 {
+    std::string fp = std::string(file_path);
+
     Assimp::Importer importer;
-    const aiScene*   scene
-        = importer.ReadFile(std::string(file_path).c_str(), aiProcess_Triangulate | aiProcess_GenNormals);
+    const aiScene*   scene = importer.ReadFile(fp.c_str(), aiProcess_Triangulate | aiProcess_GenNormals);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-        ABORT("Asset import failed for '%s'", std::string(file_path).c_str());
+        ABORT("Asset import failed for '%s'", fp.c_str());
     }
 
-    std::vector<Object> objs;
-    std::string_view    directory = file_path.substr(0, file_path.find_last_of('/'));
-    ProcessAssimpNode(objs, *scene, *scene->mRootNode, directory);
+    std::string_view directory = file_path.substr(0, file_path.find_last_of('/'));
+    ProcessAssimpNode(this->models, *scene, *scene->mRootNode, directory);
 
-    return objs;
+    LOG("Imported %zu models from '%s'", this->models.size(), fp.c_str());
 }
 
-Object::Object(const Mesh& mesh, const ShadowMesh& shadow_mesh, const Material& material) :
-    mesh(mesh), shadow_mesh(shadow_mesh), material(material)
-{}
-
-void Object::Draw(ShaderProgram& sp) const
+void Object::DrawVisual(ShaderProgram& sp) const
 {
-    this->material.Use(sp);
-    this->mesh.Draw();
+    for (const auto& model : this->models) {
+        model.DrawVisual(sp);
+    }
 }
 
-void Object::ComputeShadow(ShaderProgram& sp) const
+void Object::DrawShadow(ShaderProgram& sp) const
 {
-    (void)sp;
-    this->shadow_mesh.Draw();
+    for (const auto& model : this->models) {
+        model.DrawShadow(sp);
+    }
+}
+
+glm::vec3 Object::Position() const
+{
+    return this->pos;
+}
+
+Object& Object::Position(const glm::vec3& new_pos)
+{
+    this->pos = new_pos;
+
+    return *this;
+}
+
+glm::vec3 Object::Scale() const
+{
+    return this->scale;
+}
+
+Object& Object::Scale(const glm::vec3& new_scale)
+{
+    this->scale = new_scale;
+
+    return *this;
+}
+
+Object& Object::Scale(f32 new_scale)
+{
+    this->scale = glm::vec3(new_scale);
+
+    return *this;
+}
+
+bool Object::CastsShadows() const
+{
+    return this->casts_shadows;
+}
+
+Object& Object::CastsShadows(bool obj_casts_shadows)
+{
+    this->casts_shadows = obj_casts_shadows;
+
+    return *this;
+}
+
+glm::mat4 Object::WorldMatrix() const
+{
+    glm::mat4 mtx = glm::mat4(1.0f);
+    mtx           = glm::scale(mtx, this->scale);
+    mtx           = glm::translate(mtx, this->pos);
+
+    return mtx;
+}
+
+// TODO: having to recompute the world matrix is annoying, but probably gets optimized away if both are called adjacent
+glm::mat3 Object::NormalMatrix() const
+{
+    glm::mat4 world_mtx  = this->WorldMatrix();
+    glm::mat4 normal_mtx = glm::mat3(glm::transpose(glm::inverse(world_mtx)));
+
+    return normal_mtx;
 }

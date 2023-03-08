@@ -298,34 +298,6 @@ void Renderer::Set_Resolution(u32 width, u32 height)
     GL(glViewport(0, 0, width, height));
 }
 
-void Renderer::Set_NormalMatrix(const glm::mat3& mtx_normal)
-{
-    // TODO: use uniform buffer object
-    for (ShaderProgram& sp : this->dl_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_mtx_normal", mtx_normal);
-    }
-
-    for (ShaderProgram& sp : this->sv_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_mtx_normal", mtx_normal);
-    }
-}
-
-void Renderer::Set_WorldMatrix(const glm::mat4& mtx_world)
-{
-    // TODO: use uniform buffer object
-    for (ShaderProgram& sp : this->dl_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_mtx_world", mtx_world);
-    }
-
-    for (ShaderProgram& sp : this->sv_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_mtx_world", mtx_world);
-    }
-}
-
 void Renderer::Set_ViewMatrix(const glm::mat4& mtx_view)
 {
     // TODO: use uniform buffer object
@@ -380,14 +352,22 @@ void Renderer::Clear(const glm::vec3& color)
     GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 }
 
+// TODO: light parameters don't need to be set every time, it's inefficient but probably not a huge cost unless
+// we had a ton of object to render
+
 void Renderer::Render_Light(const AmbientLight& light, const Object& obj)
 {
     ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Ambient];
     sp.UseProgram();
 
+    // light parameters
     sp.SetUniform("g_light_source.color", light.color * light.intensity);
 
-    obj.Draw(sp);
+    // object parameters
+    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+    obj.DrawVisual(sp);
 }
 
 void Renderer::Render_Light(const PointLight& light, const Object& obj)
@@ -395,10 +375,15 @@ void Renderer::Render_Light(const PointLight& light, const Object& obj)
     ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Point];
     sp.UseProgram();
 
+    // light parameters
     sp.SetUniform("g_light_source.pos", light.pos);
     sp.SetUniform("g_light_source.color", light.color * light.intensity);
 
-    obj.Draw(sp);
+    // object parameters
+    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+    obj.DrawVisual(sp);
 }
 
 void Renderer::Render_Shadow(const PointLight& light, const Object& obj)
@@ -406,9 +391,14 @@ void Renderer::Render_Shadow(const PointLight& light, const Object& obj)
     ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Point];
     sp.UseProgram();
 
+    // light parameters
     sp.SetUniform("g_light_source.pos", light.pos);
 
-    obj.ComputeShadow(sp);
+    // object parameters
+    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+    obj.DrawShadow(sp);
 }
 
 void Renderer::Render_Light(const SpotLight& light, const Object& obj)
@@ -416,13 +406,18 @@ void Renderer::Render_Light(const SpotLight& light, const Object& obj)
     ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Spot];
     sp.UseProgram();
 
+    // light parameters
     sp.SetUniform("g_light_source.pos", light.pos);
     sp.SetUniform("g_light_source.dir", light.dir);
     sp.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
     sp.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
     sp.SetUniform("g_light_source.color", light.color * light.intensity);
 
-    obj.Draw(sp);
+    // object parameters
+    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+    obj.DrawVisual(sp);
 }
 
 void Renderer::Render_Shadow(const SpotLight& light, const Object& obj)
@@ -430,12 +425,17 @@ void Renderer::Render_Shadow(const SpotLight& light, const Object& obj)
     ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Spot];
     sp.UseProgram();
 
+    // light parameters
     sp.SetUniform("g_light_source.pos", light.pos);
     sp.SetUniform("g_light_source.dir", light.dir);
     sp.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
     sp.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
 
-    obj.ComputeShadow(sp);
+    // object parameters
+    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+    obj.DrawShadow(sp);
 }
 
 void Renderer::Render_Light(const SunLight& light, const Object& obj)
@@ -443,10 +443,15 @@ void Renderer::Render_Light(const SunLight& light, const Object& obj)
     ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Sun];
     sp.UseProgram();
 
+    // light parameters
     sp.SetUniform("g_light_source.dir", light.dir);
     sp.SetUniform("g_light_source.color", light.color * light.intensity);
 
-    obj.Draw(sp);
+    // object parameters
+    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+    obj.DrawVisual(sp);
 }
 
 void Renderer::Render_Shadow(const SunLight& light, const Object& obj)
@@ -454,7 +459,12 @@ void Renderer::Render_Shadow(const SunLight& light, const Object& obj)
     ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Sun];
     sp.UseProgram();
 
+    // light parameters
     sp.SetUniform("g_light_source.dir", light.dir);
 
-    obj.ComputeShadow(sp);
+    // object parameters
+    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+    obj.DrawShadow(sp);
 }

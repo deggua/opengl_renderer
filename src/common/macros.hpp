@@ -9,6 +9,8 @@
 #    include <type_traits>
 #endif
 
+#include "common/config.hpp"
+
 #define static_assert_decl(const_expr) static_assert((const_expr), "Assertion false: " #const_expr)
 #ifndef __cplusplus
 #    define static_assert_expr(const_expr) (0 * sizeof(struct { static_assert_decl(const_expr); }))
@@ -82,3 +84,12 @@
             BP_EXIT();                          \
         }                                       \
     } while (0)
+
+#if ENABLE_LOGGING
+#    define LOG(msg, ...)                                                                                \
+        do {                                                                                             \
+            fprintf(stdout, "Log [%s:%s:%d] :: " msg "\n", __FILE__, __func__, __LINE__, ##__VA_ARGS__); \
+        } while (0)
+#else
+#    define LOG(msg, ...)
+#endif
