@@ -197,3 +197,5 @@ constexpr const char* DefaultTexture_Diffuse  = ".NO_DIFFUSE";
 constexpr const char* DefaultTexture_Specular = ".NO_SPECULAR";
 
 extern AssetPool<Texture2D> TexturePool;
+// TODO: in order to have an 'ObjectPool' we need a separation between 'Objects' (basically mesh + texture)
+// and 'GameObjects' instances of an object at particular location in the world

@@ -36,6 +36,8 @@ layout(triangles_adjacency) in; // six vertices in
 layout(triangle_strip, max_vertices = 18) out;
 
 in vec3 vo_vtx_pos[]; // an array of 6 vertices (triangle with adjacency)
+in vec3 vo_vtx_normal[];
+in vec2 vo_vtx_texcoord[];
 
 uniform mat3 g_mtx_normal; // normal -> world
 uniform mat4 g_mtx_world;  // obj    -> world

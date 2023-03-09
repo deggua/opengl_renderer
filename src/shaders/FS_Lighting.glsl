@@ -202,6 +202,8 @@ void main()
     vec4  obj_specular = texture(g_material.specular, vo_vtx_texcoord);
     float obj_gloss    = g_material.gloss;
 
+    // TODO: this disables early z which kind of sucks, transparent stuff also doesn't work well with stencil shadows
+#if 0
     if (obj_diffuse.a < 0.5) {
         discard;
     } else {
@@ -210,4 +212,10 @@ void main()
 
         fo_color = light_color;
     }
+#else
+    vec4 light_color
+        = ComputeLighting(g_light_source, obj_diffuse, obj_specular, obj_gloss, vo_vtx_pos, frag_norm, g_view_pos);
+
+    fo_color = light_color;
+#endif
 }

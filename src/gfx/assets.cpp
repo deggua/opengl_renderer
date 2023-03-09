@@ -188,6 +188,7 @@ void Geometry::DrawVisual(ShaderProgram& sp) const
 
     this->vao_visual.Bind();
 
+    // TODO: this should probably be part of VAO
     GL(glDrawElements(GL_TRIANGLES, this->len_visual, GL_UNSIGNED_INT, 0));
 
     this->vao_visual.Unbind();

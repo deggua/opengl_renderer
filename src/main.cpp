@@ -146,9 +146,6 @@ void RenderInit(GLFWwindow* window)
     TexturePool.Load(DefaultTexture_Specular, true, glm::vec4(0.0f));
 }
 
-// TODO: I need to look more carefully at the depth test function used in each pass
-// I think it might partially be responsible for some z-fighting I'm seeing
-
 // TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but apparently
 // using discard (for the alpha test) effectively disables early-z
 
@@ -158,13 +155,14 @@ void RenderLoop(GLFWwindow* window)
     constexpr glm::vec3 rgb_black = {0.0f, 0.0f, 0.0f};
     constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
 
-    Renderer renderer = Renderer(RENDER_ENABLE_OPENGL_LOGGING);
-    renderer.Set_Resolution(g_res_w, g_res_h);
-    renderer.Clear(rgb_black);
+    Renderer rt = Renderer(RENDER_ENABLE_OPENGL_LOGGING);
+    rt.Set_Resolution(g_res_w, g_res_h);
+    rt.Clear(rgb_black);
 
     std::vector<Object> objs = {
         Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
-        Object("assets/skull/12140_Skull_v3_L2.obj").CastsShadows(true).Scale(0.01f).Position({0, 3, 0}),
+        // Object("assets/skull/12140_Skull_v3_L2.obj").CastsShadows(true).Scale(0.01f).Position({0, 3, 0}),
+        Object("assets/man.fbx").CastsShadows(true).Scale(1.0f),
     };
 
     // TODO: how should we construct light sources?
@@ -176,118 +174,29 @@ void RenderLoop(GLFWwindow* window)
         1.0f
     };
 
-    renderer.Enable(GL_DEPTH_TEST);
-    renderer.Enable(GL_CULL_FACE);
-    renderer.Enable(GL_BLEND);
-    GL(glCullFace(GL_BACK));
-    GL(glFrontFace(GL_CCW));
-    GL(glBlendEquation(GL_FUNC_ADD));
-
     while (!glfwWindowShouldClose(window)) {
         UpdateTime(window);
         ProcessKeyboardInput(window);
 
-        renderer.Clear(rgb_black);
-
         if (g_res_w != g_res_w_old || g_res_h != g_res_h_old) {
-            renderer.Set_Resolution(g_res_w, g_res_h);
+            rt.Set_Resolution(g_res_w, g_res_h);
         }
 
         glm::mat4 mtx_screen = glm::perspective(glm::radians(fov), (f32)g_res_w / (f32)g_res_h, 0.1f, 100.0f);
-        renderer.Set_ScreenMatrix(mtx_screen);
+        rt.Set_ScreenMatrix(mtx_screen);
 
         // update camera
         glm::mat4 mtx_view = g_Camera.ViewMatrix();
-        renderer.Set_ViewMatrix(mtx_view);
-        renderer.Set_ViewPosition(g_Camera.pos);
+        rt.Set_ViewMatrix(mtx_view);
+        rt.Set_ViewPosition(g_Camera.pos);
 
-        // TODO: we should iterate the light types in order to reduce the amount of program switching
-        // not sure how that should be encapsulated however
         // TODO: it's also more efficient to render objects with the same texture/mesh together as well
         // not sure how that could be tracked either
 
-        /* --- Pass :: Ambient Light + Depth --- */
-        GL(glDisable(GL_STENCIL_TEST));
-
-        GL(glBlendFunc(GL_ONE, GL_ZERO));
-        GL(glDepthFunc(GL_LESS));
-
-        for (const auto& obj : objs) {
-            renderer.Render_Light(ambient_light, obj);
-        }
-
-        /* --- Pass :: Point Light :: Shadow Volume --- */
-        GL(glEnable(GL_STENCIL_TEST));
-        GL(glEnable(GL_DEPTH_CLAMP));
-        GL(glDisable(GL_CULL_FACE));
-
-        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
-        GL(glDepthMask(GL_FALSE));
-
-        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
-        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
-        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
-
-        GL(glDepthFunc(GL_LESS));
-
-        for (const auto& obj : objs) {
-            renderer.Render_Shadow(point_light, obj);
-        }
-
-        GL(glDisable(GL_DEPTH_CLAMP));
-        GL(glEnable(GL_CULL_FACE));
-
-        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
-        GL(glDepthMask(GL_TRUE));
-
-        /* --- Pass :: Point Light :: Direct Light --- */
-        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
-        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
-        GL(glBlendFunc(GL_ONE, GL_ONE));
-
-        GL(glDepthFunc(GL_LEQUAL));
-
-        for (const auto& obj : objs) {
-            renderer.Render_Light(point_light, obj);
-        }
-
-        // clear the stencil buffer for the second shadow pass
-        GL(glClear(GL_STENCIL_BUFFER_BIT));
-
-        /* --- Pass :: Sun Light :: Shadow Volume --- */
-        GL(glEnable(GL_STENCIL_TEST));
-        GL(glEnable(GL_DEPTH_CLAMP));
-        GL(glDisable(GL_CULL_FACE));
-
-        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
-        GL(glDepthMask(GL_FALSE));
-
-        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
-        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
-        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
-
-        GL(glDepthFunc(GL_LESS));
-
-        for (const auto& obj : objs) {
-            renderer.Render_Shadow(sun_light, obj);
-        }
-
-        GL(glDisable(GL_DEPTH_CLAMP));
-        GL(glEnable(GL_CULL_FACE));
-
-        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
-        GL(glDepthMask(GL_TRUE));
-
-        /* --- Pass :: Sun Light :: Direct Lighting --- */
-        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
-        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
-        GL(glBlendFunc(GL_ONE, GL_ONE));
-
-        GL(glDepthFunc(GL_LEQUAL));
-
-        for (const auto& obj : objs) {
-            renderer.Render_Light(sun_light, obj);
-        }
+        rt.Clear(rgb_black);
+        rt.RenderLighting(ambient_light, objs);
+        rt.RenderLighting(sun_light, objs);
+        rt.RenderLighting(point_light, objs);
 
         glfwSwapBuffers(window);
         glfwPollEvents();

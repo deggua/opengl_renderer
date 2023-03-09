@@ -46,23 +46,6 @@ enum class LightType {
     Sun
 };
 
-struct Light {
-    LightType type;
-
-    union {
-        AmbientLight ambient;
-        PointLight   point;
-        SpotLight    spot;
-        SunLight     sun;
-    };
-
-    static Light Ambient(glm::vec3 color, f32 intensity);
-    static Light Point(glm::vec3 pos, glm::vec3 color, f32 intensity);
-    static Light
-    Spot(glm::vec3 pos, glm::vec3 dir, f32 inner_theta_deg, f32 outer_theta_deg, glm::vec3 color, f32 intensity);
-    static Light Sun(glm::vec3 dir, glm::vec3 color, f32 intensity);
-};
-
 struct TargetCamera {
     glm::vec3 pos;
     glm::vec3 target;
@@ -100,23 +83,14 @@ struct Renderer {
     Renderer(bool opengl_logging = false);
 
     void Set_Resolution(u32 width, u32 height);
-    void Set_NormalMatrix(const glm::mat3& mtx_normal);
-    void Set_WorldMatrix(const glm::mat4& mtx_world);
+
     void Set_ViewMatrix(const glm::mat4& mtx_view);
     void Set_ScreenMatrix(const glm::mat4& mtx_screen);
     void Set_ViewPosition(const glm::vec3& view_pos);
 
-    void Enable(GLenum setting);
     void Clear(const glm::vec3& color);
-
-    void Render_Light(const AmbientLight& light, const Object& obj);
-
-    void Render_Light(const PointLight& light, const Object& obj);
-    void Render_Shadow(const PointLight& light, const Object& obj);
-
-    void Render_Light(const SpotLight& light, const Object& obj);
-    void Render_Shadow(const SpotLight& light, const Object& obj);
-
-    void Render_Light(const SunLight& light, const Object& obj);
-    void Render_Shadow(const SunLight& light, const Object& obj);
+    void RenderLighting(const AmbientLight& light, const std::vector<Object>& objs);
+    void RenderLighting(const PointLight& light, const std::vector<Object>& objs);
+    void RenderLighting(const SpotLight& light, const std::vector<Object>& objs);
+    void RenderLighting(const SunLight& light, const std::vector<Object>& objs);
 };

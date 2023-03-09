@@ -63,70 +63,6 @@ static Shader CompileLightingShader(GLenum shader_type, LightType type, const ch
     return CompileShader(shader_type, lengthof(source_fragments), source_fragments, source_lens);
 }
 
-Light Light::Ambient(glm::vec3 color, f32 intensity)
-{
-    Light light = {
-        .type = LightType::Ambient,
-        .ambient = {
-            .color = color,
-            .intensity = intensity,
-        },
-    };
-
-    return light;
-}
-
-Light Light::Sun(glm::vec3 dir, glm::vec3 color, f32 intensity)
-{
-    Light light = {
-        .type = LightType::Sun,
-        .sun = {
-            .dir = glm::normalize(dir),
-            .color = color,
-            .intensity = intensity,
-        },
-    };
-
-    return light;
-}
-
-Light Light::Spot(
-    glm::vec3 pos,
-    glm::vec3 dir,
-    f32       inner_theta_deg,
-    f32       outer_theta_deg,
-    glm::vec3 color,
-    f32       intensity)
-{
-    Light light = {
-        .type = LightType::Spot,
-        .spot = {
-            .pos     = pos,
-            .dir     = glm::normalize(dir),
-            .color   = color,
-            .inner_cutoff = glm::cos(glm::radians(inner_theta_deg)),
-            .outer_cutoff = glm::cos(glm::radians(outer_theta_deg)),
-            .intensity = intensity,
-        },
-    };
-
-    return light;
-}
-
-Light Light::Point(glm::vec3 pos, glm::vec3 color, f32 intensity)
-{
-    Light light = {
-        .type = LightType::Point,
-        .point = {
-            .pos = pos,
-            .color = color,
-            .intensity = intensity,
-        },
-    };
-
-    return light;
-}
-
 // Target Camera
 glm::mat4 TargetCamera::ViewMatrix() const
 {
@@ -340,11 +276,6 @@ void Renderer::Set_ViewPosition(const glm::vec3& view_pos)
     }
 }
 
-void Renderer::Enable(GLenum setting)
-{
-    GL(glEnable(setting));
-}
-
 void Renderer::Clear(const glm::vec3& color)
 {
     // TODO: this doesn't need to be set with every clear, we could track its value
@@ -352,119 +283,256 @@ void Renderer::Clear(const glm::vec3& color)
     GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 }
 
-// TODO: light parameters don't need to be set every time, it's inefficient but probably not a huge cost unless
-// we had a ton of object to render
-
-void Renderer::Render_Light(const AmbientLight& light, const Object& obj)
+void Renderer::RenderLighting(const AmbientLight& light, const std::vector<Object>& objs)
 {
+    // depth
+    GL(glEnable(GL_DEPTH_TEST));
+    GL(glDisable(GL_DEPTH_CLAMP));
+    GL(glDepthMask(GL_TRUE));
+    GL(glDepthFunc(GL_LESS));
+
+    // culling
+    GL(glEnable(GL_CULL_FACE));
+    GL(glCullFace(GL_BACK));
+    GL(glFrontFace(GL_CCW));
+
+    // pixel buffer
+    GL(glEnable(GL_BLEND));
+    GL(glBlendEquation(GL_FUNC_ADD));
+    GL(glBlendFunc(GL_ONE, GL_ZERO));
+    GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+
+    // stencil buffer
+    GL(glDisable(GL_STENCIL_TEST));
+
     ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Ambient];
     sp.UseProgram();
-
-    // light parameters
     sp.SetUniform("g_light_source.color", light.color * light.intensity);
 
-    // object parameters
-    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+    for (const auto& obj : objs) {
+        // object parameters
+        sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+        sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
 
-    obj.DrawVisual(sp);
+        obj.DrawVisual(sp);
+    }
 }
 
-void Renderer::Render_Light(const PointLight& light, const Object& obj)
+void Renderer::RenderLighting(const PointLight& light, const std::vector<Object>& objs)
 {
-    ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Point];
-    sp.UseProgram();
+    /* Stencil Shadow Volume Pass*/
+    {
+        // depth
+        GL(glEnable(GL_DEPTH_TEST));
+        GL(glEnable(GL_DEPTH_CLAMP));
+        GL(glDepthMask(GL_FALSE));
+        GL(glDepthFunc(GL_LESS));
 
-    // light parameters
-    sp.SetUniform("g_light_source.pos", light.pos);
-    sp.SetUniform("g_light_source.color", light.color * light.intensity);
+        // culling
+        GL(glDisable(GL_CULL_FACE));
 
-    // object parameters
-    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+        // pixel buffer
+        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
 
-    obj.DrawVisual(sp);
+        // stencil buffer
+        GL(glEnable(GL_STENCIL_TEST));
+        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
+        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
+        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
+
+        ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Point];
+        sp.UseProgram();
+        sp.SetUniform("g_light_source.pos", light.pos);
+
+        for (const auto& obj : objs) {
+            if (obj.CastsShadows()) {
+                sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+                sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+                obj.DrawShadow(sp);
+            }
+        }
+    }
+
+    /* Pixel Lighting Calculation Pass */
+    {
+        // depth
+        GL(glEnable(GL_DEPTH_TEST));
+        GL(glDisable(GL_DEPTH_CLAMP));
+        GL(glDepthMask(GL_TRUE));
+        GL(glDepthFunc(GL_LEQUAL));
+
+        // culling
+        GL(glEnable(GL_CULL_FACE));
+
+        // pixel buffer
+        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+        GL(glBlendFunc(GL_ONE, GL_ONE));
+
+        // stencil buffer
+        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
+        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
+
+        ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Point];
+        sp.UseProgram();
+        sp.SetUniform("g_light_source.pos", light.pos);
+        sp.SetUniform("g_light_source.color", light.color * light.intensity);
+
+        for (const auto& obj : objs) {
+            // object parameters
+            sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+            sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+            obj.DrawVisual(sp);
+        }
+    }
+
+    // clear the stencil buffer once we're done
+    GL(glClear(GL_STENCIL_BUFFER_BIT));
 }
 
-void Renderer::Render_Shadow(const PointLight& light, const Object& obj)
+void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>& objs)
 {
-    ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Point];
-    sp.UseProgram();
+    /* Stencil Shadow Volume Pass*/
+    {
+        // depth
+        GL(glEnable(GL_DEPTH_CLAMP));
+        GL(glDepthMask(GL_FALSE));
+        GL(glDepthFunc(GL_LESS));
 
-    // light parameters
-    sp.SetUniform("g_light_source.pos", light.pos);
+        // culling
+        GL(glDisable(GL_CULL_FACE));
 
-    // object parameters
-    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+        // pixel buffer
+        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
 
-    obj.DrawShadow(sp);
+        // stencil buffer
+        GL(glEnable(GL_STENCIL_TEST));
+        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
+        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
+        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
+
+        ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Spot];
+        sp.UseProgram();
+        sp.SetUniform("g_light_source.pos", light.pos);
+        sp.SetUniform("g_light_source.dir", light.dir);
+        sp.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
+        sp.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
+
+        for (const auto& obj : objs) {
+            if (obj.CastsShadows()) {
+                sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+                sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+                obj.DrawShadow(sp);
+            }
+        }
+    }
+
+    /* Pixel Lighting Calculation Pass */
+    {
+        // depth
+        GL(glDisable(GL_DEPTH_CLAMP));
+        GL(glDepthMask(GL_TRUE));
+        GL(glDepthFunc(GL_LEQUAL));
+
+        // culling
+        GL(glEnable(GL_CULL_FACE));
+
+        // pixel buffer
+        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+        GL(glBlendFunc(GL_ONE, GL_ONE));
+
+        // stencil buffer
+        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
+        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
+
+        ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Spot];
+        sp.UseProgram();
+        sp.SetUniform("g_light_source.pos", light.pos);
+        sp.SetUniform("g_light_source.dir", light.dir);
+        sp.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
+        sp.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
+        sp.SetUniform("g_light_source.color", light.color * light.intensity);
+
+        for (const auto& obj : objs) {
+            sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+            sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+
+            obj.DrawVisual(sp);
+        }
+    }
+
+    // clear the stencil buffer once we're done
+    GL(glClear(GL_STENCIL_BUFFER_BIT));
 }
 
-void Renderer::Render_Light(const SpotLight& light, const Object& obj)
+void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& objs)
 {
-    ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Spot];
-    sp.UseProgram();
+    /* Stencil Shadow Volume Pass*/
+    {
+        // depth
+        GL(glEnable(GL_DEPTH_CLAMP));
+        GL(glDepthMask(GL_FALSE));
+        GL(glDepthFunc(GL_LESS));
 
-    // light parameters
-    sp.SetUniform("g_light_source.pos", light.pos);
-    sp.SetUniform("g_light_source.dir", light.dir);
-    sp.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
-    sp.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
-    sp.SetUniform("g_light_source.color", light.color * light.intensity);
+        // culling
+        GL(glDisable(GL_CULL_FACE));
 
-    // object parameters
-    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+        // pixel buffer
+        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
 
-    obj.DrawVisual(sp);
-}
+        // stencil buffer
+        GL(glEnable(GL_STENCIL_TEST));
+        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
+        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
+        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
 
-void Renderer::Render_Shadow(const SpotLight& light, const Object& obj)
-{
-    ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Spot];
-    sp.UseProgram();
+        ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Sun];
+        sp.UseProgram();
+        sp.SetUniform("g_light_source.dir", light.dir);
 
-    // light parameters
-    sp.SetUniform("g_light_source.pos", light.pos);
-    sp.SetUniform("g_light_source.dir", light.dir);
-    sp.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
-    sp.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
+        for (const auto& obj : objs) {
+            if (obj.CastsShadows()) {
+                sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+                sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
 
-    // object parameters
-    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+                obj.DrawShadow(sp);
+            }
+        }
+    }
 
-    obj.DrawShadow(sp);
-}
+    /* Pixel Lighting Calculation Pass */
+    {
+        // depth
+        GL(glDisable(GL_DEPTH_CLAMP));
+        GL(glDepthMask(GL_TRUE));
+        GL(glDepthFunc(GL_LEQUAL));
 
-void Renderer::Render_Light(const SunLight& light, const Object& obj)
-{
-    ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Sun];
-    sp.UseProgram();
+        // culling
+        GL(glEnable(GL_CULL_FACE));
 
-    // light parameters
-    sp.SetUniform("g_light_source.dir", light.dir);
-    sp.SetUniform("g_light_source.color", light.color * light.intensity);
+        // pixel buffer
+        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+        GL(glBlendFunc(GL_ONE, GL_ONE));
 
-    // object parameters
-    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+        // stencil buffer
+        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
+        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
 
-    obj.DrawVisual(sp);
-}
+        ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Sun];
+        sp.UseProgram();
+        sp.SetUniform("g_light_source.dir", light.dir);
+        sp.SetUniform("g_light_source.color", light.color * light.intensity);
 
-void Renderer::Render_Shadow(const SunLight& light, const Object& obj)
-{
-    ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Sun];
-    sp.UseProgram();
+        for (const auto& obj : objs) {
+            sp.SetUniform("g_mtx_world", obj.WorldMatrix());
+            sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
 
-    // light parameters
-    sp.SetUniform("g_light_source.dir", light.dir);
+            obj.DrawVisual(sp);
+        }
+    }
 
-    // object parameters
-    sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-    sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
-
-    obj.DrawShadow(sp);
+    // clear the stencil buffer once we're done
+    GL(glClear(GL_STENCIL_BUFFER_BIT));
 }
