@@ -77,18 +77,48 @@ struct Renderer {
         Ambient,
     };
 
-    ShaderProgram dl_shader[4] = {};
-    ShaderProgram sv_shader[3] = {};
+    struct SharedData {
+        glm::mat4 mtx_vp;
+        glm::vec3 pos_view;
+    };
+
+    // TODO: need to look more carefully at std140 layout rules
+    static_assert(offsetof(SharedData, mtx_vp) == 0);
+    static_assert(offsetof(SharedData, pos_view) == 4 * sizeof(glm::vec4));
+
+    static constexpr usize SHARED_DATA_SIZE = sizeof(SharedData);
+    static constexpr usize SHARED_DATA_SLOT = 0;
+
+    static constexpr usize NUM_LIGHT_SHADERS  = 4; // point, spot, sun, ambient
+    static constexpr usize NUM_SHADOW_SHADERS = 3; // point, spot, sun
+
+    ShaderProgram dl_shader[NUM_LIGHT_SHADERS]  = {};
+    ShaderProgram sv_shader[NUM_SHADOW_SHADERS] = {};
+
+    glm::mat4 mtx_view;
+    glm::vec3 pos_view;
+
+    glm::mat4 mtx_vp; // cached by RenderPrepass
+
+    u32 res_width = 1920, res_height = 1080;
+    f32 fov = 70.0f;
+
+    UBO shared_data;
+
+    static constexpr f32 CLIP_NEAR = 0.1f;
+    static constexpr f32 CLIP_FAR  = 100.0f;
 
     Renderer(bool opengl_logging = false);
 
-    void Set_Resolution(u32 width, u32 height);
+    Renderer& Resolution(u32 width, u32 height);
+    Renderer& FOV(f32 fov);
 
-    void Set_ViewMatrix(const glm::mat4& mtx_view);
-    void Set_ScreenMatrix(const glm::mat4& mtx_screen);
-    void Set_ViewPosition(const glm::vec3& view_pos);
+    Renderer& ViewPosition(const glm::vec3& pos);
+    Renderer& ViewMatrix(const glm::mat4& mtx);
 
-    void Clear(const glm::vec3& color);
+    Renderer& ClearColor(f32 red, f32 green, f32 blue);
+
+    void RenderPrepass();
     void RenderLighting(const AmbientLight& light, const std::vector<Object>& objs);
     void RenderLighting(const PointLight& light, const std::vector<Object>& objs);
     void RenderLighting(const SpotLight& light, const std::vector<Object>& objs);

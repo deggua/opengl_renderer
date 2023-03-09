@@ -1,5 +1,5 @@
 /*
-#version 330 core
+#version 450 core
 
 #define AMBIENT_LIGHT 0
 #define POINT_LIGHT   1
@@ -48,6 +48,33 @@ in vec2 vo_vtx_texcoord;
 // out
 out vec4 fo_color;
 
+// uniform
+uniform mat3 g_mtx_normal; // normal -> world
+uniform mat4 g_mtx_world;  // obj    -> world
+uniform mat4 g_mtx_wvp;    // obj    -> screen
+
+layout(std140, binding = 0) uniform Shared
+{
+    mat4 g_mtx_vp;
+    vec3 g_view_pos;
+};
+
+uniform Material g_material;
+
+#if LIGHT_TYPE == SUN_LIGHT
+uniform SunLight g_light_source;
+
+#elif LIGHT_TYPE == AMBIENT_LIGHT
+uniform AmbientLight g_light_source;
+
+#elif LIGHT_TYPE == POINT_LIGHT
+uniform PointLight g_light_source;
+
+#elif LIGHT_TYPE == SPOT_LIGHT
+uniform SpotLight g_light_source;
+
+#endif
+
 // Phong lighting model
 vec4 ComputeAmbientLight(vec3 light_color, vec4 obj_diffuse)
 {
@@ -85,24 +112,6 @@ float ComputeLightFalloff(vec3 light_pos, vec3 frag_pos)
 
     return falloff;
 }
-
-// uniform
-uniform vec3     g_view_pos;
-uniform Material g_material;
-
-#if LIGHT_TYPE == SUN_LIGHT
-uniform SunLight g_light_source;
-
-#elif LIGHT_TYPE == AMBIENT_LIGHT
-uniform AmbientLight g_light_source;
-
-#elif LIGHT_TYPE == POINT_LIGHT
-uniform PointLight g_light_source;
-
-#elif LIGHT_TYPE == SPOT_LIGHT
-uniform SpotLight g_light_source;
-
-#endif
 
 // Light source computation
 vec4 ComputeLighting(

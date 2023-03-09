@@ -151,52 +151,43 @@ void RenderInit(GLFWwindow* window)
 
 void RenderLoop(GLFWwindow* window)
 {
-    constexpr f32       fov       = 70.0f;
-    constexpr glm::vec3 rgb_black = {0.0f, 0.0f, 0.0f};
     constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
 
-    Renderer rt = Renderer(RENDER_ENABLE_OPENGL_LOGGING);
-    rt.Set_Resolution(g_res_w, g_res_h);
-    rt.Clear(rgb_black);
+    Renderer rt = Renderer(RENDER_ENABLE_OPENGL_LOGGING).ClearColor(0, 0, 0);
 
     std::vector<Object> objs = {
         Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
-        // Object("assets/skull/12140_Skull_v3_L2.obj").CastsShadows(true).Scale(0.01f).Position({0, 3, 0}),
-        Object("assets/man.fbx").CastsShadows(true).Scale(1.0f),
+        // Object("assets/breakfast/breakfast_room.obj").CastsShadows(true),
     };
 
     // TODO: how should we construct light sources?
-    AmbientLight ambient_light = AmbientLight{rgb_white, 0.1f};
+    AmbientLight ambient_light = AmbientLight{
+        rgb_white,
+        0.1f,
+    };
 
     SunLight sun_light = SunLight{
-        {0.0f, -1.0f, 0.0f},
+        glm::normalize(glm::vec3{-1.0f, -1.0f, 0.0f}),
         rgb_white,
-        1.0f
+        1.0f,
     };
 
     while (!glfwWindowShouldClose(window)) {
         UpdateTime(window);
         ProcessKeyboardInput(window);
 
-        if (g_res_w != g_res_w_old || g_res_h != g_res_h_old) {
-            rt.Set_Resolution(g_res_w, g_res_h);
-        }
-
-        glm::mat4 mtx_screen = glm::perspective(glm::radians(fov), (f32)g_res_w / (f32)g_res_h, 0.1f, 100.0f);
-        rt.Set_ScreenMatrix(mtx_screen);
-
-        // update camera
-        glm::mat4 mtx_view = g_Camera.ViewMatrix();
-        rt.Set_ViewMatrix(mtx_view);
-        rt.Set_ViewPosition(g_Camera.pos);
+        // setup rendering parameters
+        rt.Resolution(g_res_w, g_res_h);
+        rt.ViewPosition(g_Camera.pos);
+        rt.ViewMatrix(g_Camera.ViewMatrix());
 
         // TODO: it's also more efficient to render objects with the same texture/mesh together as well
-        // not sure how that could be tracked either
+        // not sure how that could be tracked
 
-        rt.Clear(rgb_black);
+        rt.RenderPrepass();
         rt.RenderLighting(ambient_light, objs);
         rt.RenderLighting(sun_light, objs);
-        rt.RenderLighting(point_light, objs);
+        // rt.RenderLighting(point_light, objs);
 
         glfwSwapBuffers(window);
         glfwPollEvents();

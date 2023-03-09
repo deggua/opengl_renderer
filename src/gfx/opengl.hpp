@@ -164,6 +164,17 @@ struct EBO : Handle<GLuint> {
     void LoadData(size_t size, const void* data, GLenum usage) const;
 };
 
+struct UBO : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
+
+    void Reserve(size_t size);
+    void Delete();
+    void Bind() const;
+    void Unbind() const;
+    void SubData(size_t offset, size_t size, const void* data) const;
+    void BindSlot(GLuint index) const;
+};
+
 Shader CompileShader(GLenum shader_type, GLsizei count, const GLchar** src, const GLint* len);
 Shader CompileShader(GLenum shader_type, const char* src, i32 len);
 

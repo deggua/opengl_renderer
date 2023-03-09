@@ -26,7 +26,7 @@ struct String {
     }
 };
 
-static constexpr String ShaderPreamble_Version = String("#version 330 core\n");
+static constexpr String ShaderPreamble_Version = String("#version 450 core\n");
 static constexpr String ShaderPreamble_Line    = String("#line 1\n");
 
 static constexpr String ShaderPreamble_Light = String(
@@ -209,16 +209,21 @@ Renderer::Renderer(bool opengl_logging)
     this->dl_shader[(usize)Renderer::ShaderType::Spot]    = LinkShaders(vs_default, fs_spot);
     this->dl_shader[(usize)Renderer::ShaderType::Sun]     = LinkShaders(vs_default, fs_sun);
 
-    // TODO: the ShaderProgram array has an extra slot, could be avoided but not a big deal
     this->sv_shader[(usize)Renderer::ShaderType::Point] = LinkShaders(vs_shadow, gs_point, fs_shadow);
     this->sv_shader[(usize)Renderer::ShaderType::Spot]  = LinkShaders(vs_shadow, gs_spot, fs_shadow);
     this->sv_shader[(usize)Renderer::ShaderType::Sun]   = LinkShaders(vs_shadow, gs_sun, fs_shadow);
 
     // TODO: might need different handling if more textures of each type are enabled
+    // TODO: using a UBO might be better but we only pay this cost once at startup
+    // setup texture indices in shaders that use them
     for (ShaderProgram& sp : this->dl_shader) {
         sp.SetUniform("g_material.diffuse", 0);
         sp.SetUniform("g_material.specular", 1);
     }
+
+    // setup the shared UBO
+    this->shared_data.Reserve(SHARED_DATA_SIZE);
+    this->shared_data.BindSlot(SHARED_DATA_SLOT);
 
     // TODO: synchronous is slow, not that big of an issue for now
     // TODO: this functionality doesn't exist in OpenGL 3.3
@@ -229,58 +234,61 @@ Renderer::Renderer(bool opengl_logging)
     }
 }
 
-void Renderer::Set_Resolution(u32 width, u32 height)
+Renderer& Renderer::Resolution(u32 width, u32 height)
 {
+    if (res_width == width && res_height == height) {
+        return *this;
+    }
+
+    this->res_width  = width;
+    this->res_height = height;
     GL(glViewport(0, 0, width, height));
+
+    return *this;
 }
 
-void Renderer::Set_ViewMatrix(const glm::mat4& mtx_view)
+Renderer& Renderer::FOV(f32 new_fov)
 {
-    // TODO: use uniform buffer object
-    for (ShaderProgram& sp : this->dl_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_mtx_view", mtx_view);
-    }
-
-    for (ShaderProgram& sp : this->sv_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_mtx_view", mtx_view);
-    }
+    this->fov = new_fov;
+    return *this;
 }
 
-void Renderer::Set_ScreenMatrix(const glm::mat4& mtx_screen)
+Renderer& Renderer::ViewPosition(const glm::vec3& pos)
 {
-    // TODO: use uniform buffer object
-    for (ShaderProgram& sp : this->dl_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_mtx_screen", mtx_screen);
-    }
-
-    for (ShaderProgram& sp : this->sv_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_mtx_screen", mtx_screen);
-    }
+    this->pos_view = pos;
+    return *this;
 }
 
-void Renderer::Set_ViewPosition(const glm::vec3& view_pos)
+Renderer& Renderer::ViewMatrix(const glm::mat4& mtx)
 {
-    // TODO: use uniform buffer object
-    for (ShaderProgram& sp : this->dl_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_view_pos", view_pos);
-    }
-
-    for (ShaderProgram& sp : this->sv_shader) {
-        sp.UseProgram();
-        sp.SetUniform("g_view_pos", view_pos);
-    }
+    this->mtx_view = mtx;
+    return *this;
 }
 
-void Renderer::Clear(const glm::vec3& color)
+Renderer& Renderer::ClearColor(f32 red, f32 green, f32 blue)
 {
-    // TODO: this doesn't need to be set with every clear, we could track its value
-    GL(glClearColor(color.r, color.g, color.b, 1.0f));
+    GL(glClearColor(red, green, blue, 1.0f));
+    return *this;
+}
+
+void Renderer::RenderPrepass()
+{
+    // clear the screen color
     GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
+
+    // TODO: use UBO
+    // update 'global' uniforms (ones that only change per frame basically)
+    glm::mat4 mtx_proj
+        = glm::perspective(glm::radians(this->fov), (f32)res_width / (f32)res_height, CLIP_NEAR, CLIP_FAR);
+    this->mtx_vp = mtx_proj * mtx_view;
+
+    // Set mtx_vp in all shader programs
+    // Set view_pos in all shader programs
+    SharedData tmp = {
+        this->mtx_vp,
+        this->pos_view,
+    };
+    this->shared_data.SubData(0, SHARED_DATA_SIZE, &tmp);
 }
 
 void Renderer::RenderLighting(const AmbientLight& light, const std::vector<Object>& objs)
@@ -313,6 +321,7 @@ void Renderer::RenderLighting(const AmbientLight& light, const std::vector<Objec
         // object parameters
         sp.SetUniform("g_mtx_world", obj.WorldMatrix());
         sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+        sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
 
         obj.DrawVisual(sp);
     }
@@ -348,6 +357,7 @@ void Renderer::RenderLighting(const PointLight& light, const std::vector<Object>
             if (obj.CastsShadows()) {
                 sp.SetUniform("g_mtx_world", obj.WorldMatrix());
                 sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+                sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
 
                 obj.DrawShadow(sp);
             }
@@ -382,6 +392,7 @@ void Renderer::RenderLighting(const PointLight& light, const std::vector<Object>
             // object parameters
             sp.SetUniform("g_mtx_world", obj.WorldMatrix());
             sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+            sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
 
             obj.DrawVisual(sp);
         }
@@ -423,6 +434,7 @@ void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>&
             if (obj.CastsShadows()) {
                 sp.SetUniform("g_mtx_world", obj.WorldMatrix());
                 sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+                sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
 
                 obj.DrawShadow(sp);
             }
@@ -458,6 +470,7 @@ void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>&
         for (const auto& obj : objs) {
             sp.SetUniform("g_mtx_world", obj.WorldMatrix());
             sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+            sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
 
             obj.DrawVisual(sp);
         }
@@ -496,6 +509,7 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
             if (obj.CastsShadows()) {
                 sp.SetUniform("g_mtx_world", obj.WorldMatrix());
                 sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+                sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
 
                 obj.DrawShadow(sp);
             }
@@ -528,6 +542,7 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
         for (const auto& obj : objs) {
             sp.SetUniform("g_mtx_world", obj.WorldMatrix());
             sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
+            sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
 
             obj.DrawVisual(sp);
         }

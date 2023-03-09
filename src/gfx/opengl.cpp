@@ -253,3 +253,47 @@ void EBO::LoadData(size_t size, const void* data, GLenum usage) const
     this->Bind();
     GL(glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, data, usage));
 }
+
+/* --- UBO --- */
+void UBO::Reserve(size_t size)
+{
+    if (this->handle != 0) {
+        return;
+    }
+
+    GL(glGenBuffers(1, &this->handle));
+    this->Bind();
+    GL(glBufferData(GL_UNIFORM_BUFFER, size, NULL, GL_STATIC_DRAW));
+    this->Unbind();
+}
+
+void UBO::Delete()
+{
+    if (this->handle == 0) {
+        return;
+    }
+
+    GL(glDeleteBuffers(1, &this->handle));
+}
+
+void UBO::Bind() const
+{
+    GL(glBindBuffer(GL_UNIFORM_BUFFER, this->handle));
+}
+
+void UBO::Unbind() const
+{
+    GL(glBindBuffer(GL_UNIFORM_BUFFER, 0));
+}
+
+void UBO::SubData(size_t offset, size_t size, const void* data) const
+{
+    this->Bind();
+    GL(glBufferSubData(GL_UNIFORM_BUFFER, offset, size, data));
+    this->Unbind();
+}
+
+void UBO::BindSlot(GLuint index) const
+{
+    GL(glBindBufferBase(GL_UNIFORM_BUFFER, index, this->handle));
+}

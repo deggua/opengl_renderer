@@ -1,4 +1,4 @@
-#version 330 core
+#version 450 core
 
 // in
 layout(location = 0) in vec3 vi_vtx_pos;
@@ -13,8 +13,13 @@ out vec2 vo_vtx_texcoord;
 // uniform
 uniform mat3 g_mtx_normal; // normal -> world
 uniform mat4 g_mtx_world;  // obj    -> world
-uniform mat4 g_mtx_view;   // world  -> view
-uniform mat4 g_mtx_screen; // view   -> screen
+uniform mat4 g_mtx_wvp;    // obj    -> screen
+
+layout(std140, binding = 0) uniform Shared
+{
+    mat4 g_mtx_vp;
+    vec3 g_view_pos;
+};
 
 void main()
 {

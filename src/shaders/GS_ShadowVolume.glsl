@@ -1,11 +1,14 @@
 /*
-#version 330 core
+#version 450 core
 
 #define AMBIENT_LIGHT 0
 #define POINT_LIGHT   1
 #define SPOT_LIGHT    2
 #define SUN_LIGHT     3
 */
+
+// TODO: I think we should inset the shadow geometry by the vertex normals, not the direction from the light source
+// needs testing
 
 #define EPSILON 0.001
 
@@ -41,8 +44,13 @@ in vec2 vo_vtx_texcoord[];
 
 uniform mat3 g_mtx_normal; // normal -> world
 uniform mat4 g_mtx_world;  // obj    -> world
-uniform mat4 g_mtx_view;   // world  -> view
-uniform mat4 g_mtx_screen; // view   -> screen
+uniform mat4 g_mtx_wvp;    // obj    -> screen
+
+layout(std140, binding = 0) uniform Shared
+{
+    mat4 g_mtx_vp;
+    vec3 g_view_pos;
+};
 
 #if LIGHT_TYPE == SUN_LIGHT
 uniform SunLight g_light_source;
@@ -245,12 +253,11 @@ void EmitVolume(SunLight light, Vertices verts, Edges edges, mat4 mtx_vp)
 }
 
 // TODO: spot light seems a little trickier, need to check if the vertex is within the cone I think
+// actually maybe not, it might even be the same as the point light
 void EmitVolume(SpotLight light, Vertices verts, Edges edges, mat4 mtx_vp) {}
 
 void main()
 {
-    mat4 mtx_vp = g_mtx_screen * g_mtx_view;
-
     Edges edges;
     edges.e1 = vo_vtx_pos[2] - vo_vtx_pos[0];
     edges.e2 = vo_vtx_pos[4] - vo_vtx_pos[0];
@@ -267,5 +274,5 @@ void main()
     verts.v4 = vo_vtx_pos[4];
     verts.v5 = vo_vtx_pos[5];
 
-    EmitVolume(g_light_source, verts, edges, mtx_vp);
+    EmitVolume(g_light_source, verts, edges, g_mtx_vp);
 }

@@ -14,6 +14,7 @@
 -Wno-unused-command-line-argument
 -Wno-language-extension-token
 -Wno-c99-designator
+-Wno-microsoft-enum-value
 
 -lopengl32
 -lglfw3
