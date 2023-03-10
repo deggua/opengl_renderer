@@ -4,123 +4,160 @@
 #include <assimp/scene.h>
 
 #include <assimp/Importer.hpp>
+#include <numeric>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 AssetPool<Texture2D> TexturePool(32);
 
-using VertexId = u32;
-
-struct OppositeVertexId {
-    VertexId vtx_a, vtx_b;
-    bool     has_b = false;
-
-    OppositeVertexId(VertexId vtx_a)
+template<>
+struct std::hash<aiVector3D> {
+    std::size_t operator()(const aiVector3D& vec) const noexcept
     {
-        this->vtx_a = vtx_a;
-    }
-
-    void SetVtxB(VertexId vtx)
-    {
-        if (this->has_b) {
-            ABORT("Degenerate mesh encountered in triangle adjacency calculation");
-        }
-
-        this->vtx_b = vtx;
-        this->has_b = true;
-    }
-
-    std::optional<VertexId> GetOpposite(VertexId vtx)
-    {
-        if (this->vtx_a != vtx) {
-            return this->vtx_a;
-        } else if (this->has_b) {
-            return this->vtx_b;
-        } else {
-            return std::nullopt;
-        }
+        return std::hash<f32>{}(vec.x) ^ std::hash<f32>{}(vec.y) ^ std::hash<f32>{}(vec.z);
     }
 };
 
-struct EdgeId {
-    u64 id;
+struct HalfEdge {
+    GLuint idx[2];
 
-    operator u64()
+    HalfEdge()
     {
-        return id;
+        this->idx[0] = 0;
+        this->idx[1] = 0;
     }
 
-    EdgeId(VertexId vtx_a, VertexId vtx_b)
+    HalfEdge(GLuint first, GLuint second)
     {
-        if (vtx_a > vtx_b) {
-            id = ((u64)vtx_a << 32) | ((u64)vtx_b);
-        } else {
-            id = ((u64)vtx_b << 32) | ((u64)vtx_a);
-        }
+        this->idx[0] = first;
+        this->idx[1] = second;
+    }
+
+    bool operator==(const HalfEdge& rhs) const
+    {
+        return this->idx[0] == rhs.idx[0] && this->idx[1] == rhs.idx[1];
     }
 };
-
-bool operator==(const EdgeId& lhs, const EdgeId& rhs)
-{
-    return (lhs.id == rhs.id);
-}
 
 template<>
-struct std::hash<EdgeId> {
-    std::size_t operator()(const EdgeId& edge) const noexcept
+struct std::hash<HalfEdge> {
+    std::size_t operator()(const HalfEdge& hedge) const noexcept
     {
-        return std::hash<u64>{}(edge.id);
+        return std::hash<GLuint>{}(hedge.idx[0]) ^ std::hash<GLuint>{}(hedge.idx[1]);
     }
 };
+
+struct Face {
+    GLuint idx[3];
+
+    Face()
+    {
+        this->idx[0] = 0;
+        this->idx[1] = 0;
+        this->idx[2] = 0;
+    }
+
+    Face(GLuint i0, GLuint i1, GLuint i2)
+    {
+        this->idx[0] = i0;
+        this->idx[1] = i1;
+        this->idx[2] = i2;
+    }
+
+    bool operator==(const Face& rhs) const
+    {
+        bool first  = this->idx[0] == rhs.idx[0] && this->idx[1] == rhs.idx[1] && this->idx[2] == rhs.idx[2];
+        bool second = this->idx[0] == rhs.idx[1] && this->idx[1] == rhs.idx[2] && this->idx[2] == rhs.idx[0];
+        bool third  = this->idx[0] == rhs.idx[2] && this->idx[1] == rhs.idx[0] && this->idx[2] == rhs.idx[1];
+        return first || second || third;
+    }
+};
+
+template<>
+struct std::hash<Face> {
+    std::size_t operator()(const Face& face) const noexcept
+    {
+        return std::hash<GLuint>{}(face.idx[0]) ^ std::hash<GLuint>{}(face.idx[1]) ^ std::hash<GLuint>{}(face.idx[2]);
+    }
+};
+
+static GLuint UniqueIndex(std::unordered_map<aiVector3D, GLuint>& vtx_map, const aiMesh& mesh, GLuint pot_index)
+{
+    aiVector3D& vtx = mesh.mVertices[pot_index];
+    return vtx_map.at(vtx);
+}
 
 static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
 {
-    // build a map from an edge to its opposite vertices
-    std::unordered_map<EdgeId, OppositeVertexId> edge_map = {};
-    for (usize ii = 0; ii < mesh.mNumFaces; ii++) {
-        ASSERT(mesh.mFaces[ii].mNumIndices == 3);
-        for (usize jj = 0; jj < 3; jj++) {
-            EdgeId   edge    = EdgeId(mesh.mFaces[ii].mIndices[jj], mesh.mFaces[ii].mIndices[(jj + 1) % 3]);
-            VertexId vtx_opp = mesh.mFaces[ii].mIndices[(jj + 2) % 3];
+    std::unordered_map<aiVector3D, GLuint> vtx_map      = {};
+    std::unordered_set<Face>               unique_faces = {};
+    std::unordered_map<HalfEdge, GLuint>   edge_map     = {};
 
-            // if the edge is not in the map, then insert it with the first opp vertex as the current opp vertex
-            // if the edge is in the map, then set the 2nd opp vertex to the current edge's opposite vertex
-            const auto& edge_in_map = edge_map.find(edge);
-            if (edge_in_map != edge_map.end()) {
-                edge_in_map->second.SetVtxB(vtx_opp);
-            } else {
-                edge_map.insert({edge, OppositeVertexId(vtx_opp)});
-            }
+    // first we filter out non-unique indices, this lets us map vertices to a unique index
+    for (GLuint ii = 0; ii < mesh.mNumVertices; ii++) {
+        const aiVector3D& vtx = mesh.mVertices[ii];
+        if (vtx_map.find(vtx) == std::end(vtx_map)) {
+            vtx_map[vtx] = ii;
         }
     }
 
-    // fill the indices array in groups of 6 indices of triangle adjacency data
-    std::vector<GLuint> indices = {};
+    // even though we dedupe vertices, we might still add two identical faces because after we go through the map
+    // two faces with separate indices might map to identical or semi-identical faces, so we need to dedupe faces
     for (usize ii = 0; ii < mesh.mNumFaces; ii++) {
+        ASSERT(mesh.mFaces[ii].mNumIndices == 3);
+        GLuint i0 = UniqueIndex(vtx_map, mesh, mesh.mFaces[ii].mIndices[0]);
+        GLuint i1 = UniqueIndex(vtx_map, mesh, mesh.mFaces[ii].mIndices[1]);
+        GLuint i2 = UniqueIndex(vtx_map, mesh, mesh.mFaces[ii].mIndices[2]);
+
+        unique_faces.insert(Face(i0, i1, i2));
+    }
+
+    // now we should be able to map edges to two unique vertices (so long as the original mesh doesn't have the edge
+    // case)
+    for (const Face& face : unique_faces) {
+        for (usize ii = 0; ii < 3; ii++) {
+            GLuint i0 = face.idx[ii];
+            GLuint i1 = face.idx[(ii + 1) % 3];
+            GLuint i2 = face.idx[(ii + 2) % 3];
+            edge_map.insert({HalfEdge(i0, i1), i2});
+        }
+    }
+
+    // now we have a map of edges to their opposite vertex, construct the indices
+    std::vector<GLuint> indices = {};
+    for (const Face& face : unique_faces) {
         // see: https://ogldev.org/www/tutorial39/adjacencies.jpg
-        GLuint adj_indices[6] = {
-            [0] = mesh.mFaces[ii].mIndices[0],
-            [2] = mesh.mFaces[ii].mIndices[1],
-            [4] = mesh.mFaces[ii].mIndices[2],
+        GLuint adj[6] = {
+            [0] = face.idx[0],
+            [2] = face.idx[1],
+            [4] = face.idx[2],
         };
 
-        EdgeId   e1        = EdgeId(mesh.mFaces[ii].mIndices[0], mesh.mFaces[ii].mIndices[1]);
-        VertexId e1_opp_in = mesh.mFaces[ii].mIndices[2];
+        const auto& opp_e1 = edge_map.find({adj[2], adj[0]});
+        const auto& opp_e5 = edge_map.find({adj[4], adj[2]});
+        const auto& opp_e2 = edge_map.find({adj[0], adj[4]});
 
-        EdgeId   e2        = EdgeId(mesh.mFaces[ii].mIndices[1], mesh.mFaces[ii].mIndices[2]);
-        VertexId e2_opp_in = mesh.mFaces[ii].mIndices[0];
+        if (opp_e1 == std::end(edge_map)) {
+            adj[1] = adj[4];
+        } else {
+            adj[1] = opp_e1->second;
+        }
 
-        EdgeId   e3        = EdgeId(mesh.mFaces[ii].mIndices[2], mesh.mFaces[ii].mIndices[0]);
-        VertexId e3_opp_in = mesh.mFaces[ii].mIndices[1];
+        if (opp_e5 == std::end(edge_map)) {
+            adj[3] = adj[0];
+        } else {
+            adj[3] = opp_e5->second;
+        }
 
-        // TODO: not sure if this is exactly what we want, but the idea is that it looks folded in on itself
-        // so that the edge forms a silhoutte edge in the degenerate case where the mesh is open
-        adj_indices[1] = edge_map.at(e1).GetOpposite(e1_opp_in).value_or(e1_opp_in);
-        adj_indices[3] = edge_map.at(e2).GetOpposite(e2_opp_in).value_or(e2_opp_in);
-        adj_indices[5] = edge_map.at(e3).GetOpposite(e3_opp_in).value_or(e3_opp_in);
+        if (opp_e2 == std::end(edge_map)) {
+            adj[5] = adj[2];
+        } else {
+            adj[5] = opp_e2->second;
+        }
 
-        indices.insert(indices.end(), std::begin(adj_indices), std::end(adj_indices));
+        indices.insert(indices.end(), std::begin(adj), std::end(adj));
     }
 
     return indices;

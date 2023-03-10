@@ -407,6 +407,7 @@ void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>&
     /* Stencil Shadow Volume Pass*/
     {
         // depth
+        GL(glEnable(GL_DEPTH_TEST));
         GL(glEnable(GL_DEPTH_CLAMP));
         GL(glDepthMask(GL_FALSE));
         GL(glDepthFunc(GL_LESS));
@@ -444,6 +445,7 @@ void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>&
     /* Pixel Lighting Calculation Pass */
     {
         // depth
+        GL(glEnable(GL_DEPTH_TEST));
         GL(glDisable(GL_DEPTH_CLAMP));
         GL(glDepthMask(GL_TRUE));
         GL(glDepthFunc(GL_LEQUAL));
@@ -485,6 +487,7 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
     /* Stencil Shadow Volume Pass*/
     {
         // depth
+        GL(glEnable(GL_DEPTH_TEST));
         GL(glEnable(GL_DEPTH_CLAMP));
         GL(glDepthMask(GL_FALSE));
         GL(glDepthFunc(GL_LESS));
@@ -519,6 +522,7 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
     /* Pixel Lighting Calculation Pass */
     {
         // depth
+        GL(glEnable(GL_DEPTH_TEST));
         GL(glDisable(GL_DEPTH_CLAMP));
         GL(glDepthMask(GL_TRUE));
         GL(glDepthFunc(GL_LEQUAL));

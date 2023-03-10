@@ -24,8 +24,6 @@
 -lshell32
 -lassimp-vc143-mt
 
--masm=intel
-
 -march=native
 -mtune=native
 

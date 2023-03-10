@@ -158,16 +158,17 @@ void RenderLoop(GLFWwindow* window)
     std::vector<Object> objs = {
         Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
         // Object("assets/breakfast/breakfast_room.obj").CastsShadows(true),
+        // Object("assets/default.obj").CastsShadows(true),
     };
 
     // TODO: how should we construct light sources?
     AmbientLight ambient_light = AmbientLight{
         rgb_white,
-        0.1f,
+        0.2f,
     };
 
     SunLight sun_light = SunLight{
-        glm::normalize(glm::vec3{-1.0f, -1.0f, 0.0f}),
+        glm::normalize(glm::vec3{0.0f, -1.0f, 0.0f}),
         rgb_white,
         1.0f,
     };
@@ -187,7 +188,7 @@ void RenderLoop(GLFWwindow* window)
         rt.RenderPrepass();
         rt.RenderLighting(ambient_light, objs);
         rt.RenderLighting(sun_light, objs);
-        // rt.RenderLighting(point_light, objs);
+        rt.RenderLighting(point_light, objs);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
