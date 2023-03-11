@@ -77,6 +77,7 @@ struct Renderer {
         Ambient,
     };
 
+    // used in the UBO for cross shader storage
     struct SharedData {
         glm::mat4 mtx_vp;
         glm::vec3 pos_view;

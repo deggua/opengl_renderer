@@ -42,7 +42,7 @@ static constexpr String ShaderPreamble_LightType[] = {
     String("#define LIGHT_TYPE SUN_LIGHT\n"),
 };
 
-static Shader CompileLightingShader(GLenum shader_type, LightType type, const char* src, i32 len)
+static Shader CompileLightShader(GLenum shader_type, LightType type, const char* src, i32 len)
 {
     const GLchar* source_fragments[] = {
         ShaderPreamble_Version.str,
@@ -187,31 +187,28 @@ static void APIENTRY OpenGL_Debug_Callback(
 // Renderer
 Renderer::Renderer(bool opengl_logging)
 {
-    // TODO: vs_default and vs_shadow could be merged if we used the same vertex format (which we should to save GPU
-    // memory)
-    Shader vs_default = CompileShader(GL_VERTEX_SHADER, VS_Common.src, VS_Common.len);
-    Shader vs_shadow  = CompileShader(GL_VERTEX_SHADER, VS_ShadowVolume.src, VS_ShadowVolume.len);
-    Shader fs_shadow  = CompileShader(GL_FRAGMENT_SHADER, FS_ShadowVolume.src, FS_ShadowVolume.len);
+    Shader vs_common = CompileShader(GL_VERTEX_SHADER, VS_Common.src, VS_Common.len);
 
-    Shader fs_ambient = CompileLightingShader(GL_FRAGMENT_SHADER, LightType::Ambient, FS_Lighting.src, FS_Lighting.len);
-    Shader fs_point   = CompileLightingShader(GL_FRAGMENT_SHADER, LightType::Point, FS_Lighting.src, FS_Lighting.len);
-    Shader fs_spot    = CompileLightingShader(GL_FRAGMENT_SHADER, LightType::Spot, FS_Lighting.src, FS_Lighting.len);
-    Shader fs_sun     = CompileLightingShader(GL_FRAGMENT_SHADER, LightType::Sun, FS_Lighting.src, FS_Lighting.len);
+    Shader fs_shadow = CompileShader(GL_FRAGMENT_SHADER, FS_ShadowVolume.src, FS_ShadowVolume.len);
+
+    Shader fs_ambient = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Ambient, FS_Lighting.src, FS_Lighting.len);
+    Shader fs_point   = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Point, FS_Lighting.src, FS_Lighting.len);
+    Shader fs_spot    = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Spot, FS_Lighting.src, FS_Lighting.len);
+    Shader fs_sun     = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Sun, FS_Lighting.src, FS_Lighting.len);
 
     Shader gs_point
-        = CompileLightingShader(GL_GEOMETRY_SHADER, LightType::Point, GS_ShadowVolume.src, GS_ShadowVolume.len);
-    Shader gs_spot
-        = CompileLightingShader(GL_GEOMETRY_SHADER, LightType::Spot, GS_ShadowVolume.src, GS_ShadowVolume.len);
-    Shader gs_sun = CompileLightingShader(GL_GEOMETRY_SHADER, LightType::Sun, GS_ShadowVolume.src, GS_ShadowVolume.len);
+        = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Point, GS_ShadowVolume.src, GS_ShadowVolume.len);
+    Shader gs_spot = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Spot, GS_ShadowVolume.src, GS_ShadowVolume.len);
+    Shader gs_sun  = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Sun, GS_ShadowVolume.src, GS_ShadowVolume.len);
 
-    this->dl_shader[(usize)Renderer::ShaderType::Ambient] = LinkShaders(vs_default, fs_ambient);
-    this->dl_shader[(usize)Renderer::ShaderType::Point]   = LinkShaders(vs_default, fs_point);
-    this->dl_shader[(usize)Renderer::ShaderType::Spot]    = LinkShaders(vs_default, fs_spot);
-    this->dl_shader[(usize)Renderer::ShaderType::Sun]     = LinkShaders(vs_default, fs_sun);
+    this->dl_shader[(usize)ShaderType::Ambient] = LinkShaders(vs_common, fs_ambient);
+    this->dl_shader[(usize)ShaderType::Point]   = LinkShaders(vs_common, fs_point);
+    this->dl_shader[(usize)ShaderType::Spot]    = LinkShaders(vs_common, fs_spot);
+    this->dl_shader[(usize)ShaderType::Sun]     = LinkShaders(vs_common, fs_sun);
 
-    this->sv_shader[(usize)Renderer::ShaderType::Point] = LinkShaders(vs_shadow, gs_point, fs_shadow);
-    this->sv_shader[(usize)Renderer::ShaderType::Spot]  = LinkShaders(vs_shadow, gs_spot, fs_shadow);
-    this->sv_shader[(usize)Renderer::ShaderType::Sun]   = LinkShaders(vs_shadow, gs_sun, fs_shadow);
+    this->sv_shader[(usize)ShaderType::Point] = LinkShaders(vs_common, gs_point, fs_shadow);
+    this->sv_shader[(usize)ShaderType::Spot]  = LinkShaders(vs_common, gs_spot, fs_shadow);
+    this->sv_shader[(usize)ShaderType::Sun]   = LinkShaders(vs_common, gs_sun, fs_shadow);
 
     // TODO: might need different handling if more textures of each type are enabled
     // TODO: using a UBO might be better but we only pay this cost once at startup
@@ -219,6 +216,7 @@ Renderer::Renderer(bool opengl_logging)
     for (ShaderProgram& sp : this->dl_shader) {
         sp.SetUniform("g_material.diffuse", 0);
         sp.SetUniform("g_material.specular", 1);
+        sp.SetUniform("g_material.normal", 2);
     }
 
     // setup the shared UBO
@@ -276,20 +274,20 @@ void Renderer::RenderPrepass()
     // clear the screen color
     GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 
-    // TODO: use UBO
-    // update 'global' uniforms (ones that only change per frame basically)
-    glm::mat4 mtx_proj
-        = glm::perspective(glm::radians(this->fov), (f32)res_width / (f32)res_height, CLIP_NEAR, CLIP_FAR);
-    this->mtx_vp = mtx_proj * mtx_view;
+    // cache the VP matrix for this render pass
+    f32       aspect   = (f32)res_width / (f32)res_height;
+    glm::mat4 mtx_proj = glm::perspective(glm::radians(this->fov), aspect, CLIP_NEAR, CLIP_FAR);
+    this->mtx_vp       = mtx_proj * mtx_view;
 
-    // Set mtx_vp in all shader programs
-    // Set view_pos in all shader programs
+    // Update UBO for VP matrix and View Position
     SharedData tmp = {
         this->mtx_vp,
         this->pos_view,
     };
     this->shared_data.SubData(0, SHARED_DATA_SIZE, &tmp);
 }
+
+// TODO: there should be a better way to organize these, they're very similar
 
 void Renderer::RenderLighting(const AmbientLight& light, const std::vector<Object>& objs)
 {
@@ -313,7 +311,7 @@ void Renderer::RenderLighting(const AmbientLight& light, const std::vector<Objec
     // stencil buffer
     GL(glDisable(GL_STENCIL_TEST));
 
-    ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Ambient];
+    ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Ambient];
     sp.UseProgram();
     sp.SetUniform("g_light_source.color", light.color * light.intensity);
 
@@ -349,7 +347,7 @@ void Renderer::RenderLighting(const PointLight& light, const std::vector<Object>
         GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
         GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
 
-        ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Point];
+        ShaderProgram& sp = this->sv_shader[(usize)ShaderType::Point];
         sp.UseProgram();
         sp.SetUniform("g_light_source.pos", light.pos);
 
@@ -383,7 +381,7 @@ void Renderer::RenderLighting(const PointLight& light, const std::vector<Object>
         GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
         GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
 
-        ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Point];
+        ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Point];
         sp.UseProgram();
         sp.SetUniform("g_light_source.pos", light.pos);
         sp.SetUniform("g_light_source.color", light.color * light.intensity);
@@ -424,7 +422,7 @@ void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>&
         GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
         GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
 
-        ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Spot];
+        ShaderProgram& sp = this->sv_shader[(usize)ShaderType::Spot];
         sp.UseProgram();
         sp.SetUniform("g_light_source.pos", light.pos);
         sp.SetUniform("g_light_source.dir", light.dir);
@@ -461,7 +459,7 @@ void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>&
         GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
         GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
 
-        ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Spot];
+        ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Spot];
         sp.UseProgram();
         sp.SetUniform("g_light_source.pos", light.pos);
         sp.SetUniform("g_light_source.dir", light.dir);
@@ -504,7 +502,14 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
         GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
         GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
 
-        ShaderProgram& sp = this->sv_shader[(usize)Renderer::ShaderType::Sun];
+        // offset shadows in Z
+        // TODO: this kind of works but introduces some slight visual glitches
+        // better off just avoiding placing lights at certain angles to avoid Z fighting
+        // or maybe there's a better solution
+        // GL(glEnable(GL_POLYGON_OFFSET_FILL));
+        // GL(glPolygonOffset(0.05, 2.0));
+
+        ShaderProgram& sp = this->sv_shader[(usize)ShaderType::Sun];
         sp.UseProgram();
         sp.SetUniform("g_light_source.dir", light.dir);
 
@@ -538,7 +543,10 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
         GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
         GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
 
-        ShaderProgram& sp = this->dl_shader[(usize)Renderer::ShaderType::Sun];
+        // disable offset in Z
+        // GL(glDisable(GL_POLYGON_OFFSET_FILL));
+
+        ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Sun];
         sp.UseProgram();
         sp.SetUniform("g_light_source.dir", light.dir);
         sp.SetUniform("g_light_source.color", light.color * light.intensity);

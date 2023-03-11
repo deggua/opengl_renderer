@@ -138,12 +138,14 @@ static void UpdateTime(GLFWwindow* window)
     glfwSetWindowTitle(window, buf);
 }
 
+// TODO: maybe this should go in the Renderer class constructor
 void RenderInit(GLFWwindow* window)
 {
     (void)window;
 
     TexturePool.Load(DefaultTexture_Diffuse, true, glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
     TexturePool.Load(DefaultTexture_Specular, true, glm::vec4(0.0f));
+    TexturePool.Load(DefaultTexture_Normal, true, glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
 }
 
 // TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but apparently
@@ -193,7 +195,7 @@ void RenderLoop(GLFWwindow* window)
         rt.RenderPrepass();
         rt.RenderLighting(ambient_light, objs);
         rt.RenderLighting(sun_light, objs);
-        rt.RenderLighting(point_light, objs);
+        // rt.RenderLighting(point_light, objs);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -233,8 +235,12 @@ int main()
     glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
     glfwSwapInterval(0);
 
-    RenderInit(window);
-    RenderLoop(window);
+    try {
+        RenderInit(window);
+        RenderLoop(window);
+    } catch (std::exception e) {
+        ABORT("Exception thrown from Renderer: %s", e.what());
+    }
 
     glfwTerminate();
     return EXIT_SUCCESS;

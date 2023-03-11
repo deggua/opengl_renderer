@@ -195,6 +195,7 @@ struct AssetPool {
 
 constexpr const char* DefaultTexture_Diffuse  = ".NO_DIFFUSE";
 constexpr const char* DefaultTexture_Specular = ".NO_SPECULAR";
+constexpr const char* DefaultTexture_Normal   = ".NO_NORMAL";
 
 extern AssetPool<Texture2D> TexturePool;
 // TODO: in order to have an 'ObjectPool' we need a separation between 'Objects' (basically mesh + texture)
