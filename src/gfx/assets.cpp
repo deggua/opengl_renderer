@@ -73,6 +73,11 @@ struct Face {
         bool third  = this->idx[0] == rhs.idx[2] && this->idx[1] == rhs.idx[0] && this->idx[2] == rhs.idx[1];
         return first || second || third;
     }
+
+    Face Mirror() const
+    {
+        return Face(this->idx[0], this->idx[2], this->idx[1]);
+    }
 };
 
 template<>
@@ -111,7 +116,14 @@ static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
         GLuint i1 = UniqueIndex(vtx_map, mesh, mesh.mFaces[ii].mIndices[1]);
         GLuint i2 = UniqueIndex(vtx_map, mesh, mesh.mFaces[ii].mIndices[2]);
 
-        unique_faces.insert(Face(i0, i1, i2));
+        Face face = Face(i0, i1, i2);
+        // TODO: this does sort of work, but it also means that flat geometry (e.g. a cape that has no volume) will
+        // not cast shadows, which sucks
+        if (unique_faces.contains(face.Mirror())) {
+            unique_faces.erase(face.Mirror());
+        } else {
+            unique_faces.insert(face);
+        }
     }
 
     // now we should be able to map edges to two unique vertices (so long as the original mesh doesn't have the edge
@@ -157,7 +169,23 @@ static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
             adj[5] = opp_e2->second;
         }
 
-        indices.insert(indices.end(), std::begin(adj), std::end(adj));
+        // TODO: This works around an issue in sponza mesh
+        // NOTE: This doesn't solve the issue in breakfast where the sun is casting directly down, still needs
+        // investigation
+        bool i1_not_unique = (adj[1] == adj[0]) || (adj[1] == adj[2]) || (adj[1] == adj[4]);
+        bool i3_not_unique = (adj[3] == adj[0]) || (adj[3] == adj[2]) || (adj[3] == adj[4]);
+        bool i5_not_unique = (adj[5] == adj[0]) || (adj[5] == adj[2]) || (adj[5] == adj[4]);
+        if (i1_not_unique && i3_not_unique && i5_not_unique) {
+            // NOTE: this is definitely the error case, disabling the shadow mesh (by returning an empty vector)
+            // 'solves' the issue, but is not ideal (both because we don't want to even waste a pipeline stage on the
+            // empty mesh and because we still want shadows for degenerate objects). Simply removing the triangle
+            // doesn't solve the issue, so it's an interaction issue where it isn't the triangle itself but two
+            // triangles sharing the same single tri (or something to that effect)
+            LOG("Found single tri");
+            return {};
+        } else {
+            indices.insert(indices.end(), std::begin(adj), std::end(adj));
+        }
     }
 
     return indices;

@@ -157,7 +157,12 @@ void RenderLoop(GLFWwindow* window)
 
     std::vector<Object> objs = {
         Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
+        // Object("assets/sponza2/sponza.obj").CastsShadows(true),
+        // Object("assets/sanmiguel/san-miguel-low-poly.obj").CastsShadows(true),
+        // Object("assets/sibenik/sibenik.obj").CastsShadows(true),
         // Object("assets/breakfast/breakfast_room.obj").CastsShadows(true),
+        // Object("assets/vokselia/vokselia_spawn.obj").CastsShadows(true).Scale(10.0f),
+
         // Object("assets/default.obj").CastsShadows(true),
     };
 
@@ -168,7 +173,7 @@ void RenderLoop(GLFWwindow* window)
     };
 
     SunLight sun_light = SunLight{
-        glm::normalize(glm::vec3{0.0f, -1.0f, 0.0f}),
+        glm::normalize(glm::vec3{-1.0f, -1.0f, 0.0f}),
         rgb_white,
         1.0f,
     };
