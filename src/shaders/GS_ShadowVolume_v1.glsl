@@ -266,36 +266,9 @@ void EmitVolume(SpotLight light, Vertices verts, Edges edges, mat4 mtx_vp)
         return;
     }
 
-    vec3 light_dir_v0 = normalize(light.pos - verts.v0);
-    vec3 light_dir_v1 = normalize(light.pos - verts.v1);
-    vec3 light_dir_v2 = normalize(light.pos - verts.v2);
-    vec3 light_dir_v3 = normalize(light.pos - verts.v3);
-    vec3 light_dir_v4 = normalize(light.pos - verts.v4);
-    vec3 light_dir_v5 = normalize(light.pos - verts.v5);
-
-    // expand the outer cone a bit since the exact cone still has artifacts
-    // TODO: play with factor, larger values are better, 1/1.4 didn't work
-    // TODO: still had weird artifacts even for relatively small values, 0 seems to work but generates a lot of extra
-    // geometry
-    // TODO: still needs proper testing to see if its faster since we have to do a lot more compute per vertex
-    // float expanded_outer_cutoff = 0.3 * light.outer_cutoff;
-    float expanded_outer_cutoff = 0;
-
-    bool is_outside_v0 = dot(-light_dir_v0, light.dir) < expanded_outer_cutoff;
-    bool is_outside_v1 = dot(-light_dir_v1, light.dir) < expanded_outer_cutoff;
-    bool is_outside_v2 = dot(-light_dir_v2, light.dir) < expanded_outer_cutoff;
-    bool is_outside_v3 = dot(-light_dir_v3, light.dir) < expanded_outer_cutoff;
-    bool is_outside_v4 = dot(-light_dir_v4, light.dir) < expanded_outer_cutoff;
-    bool is_outside_v5 = dot(-light_dir_v5, light.dir) < expanded_outer_cutoff;
-
-    // Handle only faces where the face is at least partially within the outer cone
-    if (is_outside_v0 && is_outside_v1 && is_outside_v2 && is_outside_v3 && is_outside_v4 && is_outside_v5) {
-        return;
-    }
-
     normal = cross(edges.e3, edges.e1);
 
-    if (dot(normal, light_dir) <= 0 && (!is_outside_v0 || !is_outside_v2)) {
+    if (dot(normal, light_dir) <= 0) {
         vec3 vtx_start = verts.v0;
         vec3 vtx_end   = verts.v2;
         EmitQuad(light, vtx_start, vtx_end, mtx_vp);
@@ -304,7 +277,7 @@ void EmitVolume(SpotLight light, Vertices verts, Edges edges, mat4 mtx_vp)
     normal    = cross(edges.e4, edges.e5);
     light_dir = light.pos - verts.v2;
 
-    if (dot(normal, light_dir) <= 0 && (!is_outside_v2 || !is_outside_v4)) {
+    if (dot(normal, light_dir) <= 0) {
         vec3 vtx_start = verts.v2;
         vec3 vtx_end   = verts.v4;
         EmitQuad(light, vtx_start, vtx_end, mtx_vp);
@@ -313,7 +286,7 @@ void EmitVolume(SpotLight light, Vertices verts, Edges edges, mat4 mtx_vp)
     normal    = cross(edges.e2, edges.e6);
     light_dir = light.pos - verts.v4;
 
-    if (dot(normal, light_dir) <= 0 && (!is_outside_v4 || !is_outside_v0)) {
+    if (dot(normal, light_dir) <= 0) {
         vec3 vtx_start = verts.v4;
         vec3 vtx_end   = verts.v0;
         EmitQuad(light, vtx_start, vtx_end, mtx_vp);

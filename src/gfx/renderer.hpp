@@ -159,6 +159,9 @@ struct Renderer {
     static constexpr usize NUM_LIGHT_SHADERS  = 4; // point, spot, sun, ambient
     static constexpr usize NUM_SHADOW_SHADERS = 3; // point, spot, sun
 
+    static constexpr f32 CLIP_NEAR = 0.1f;
+    static constexpr f32 CLIP_FAR  = 50.0f;
+
     ShaderProgram dl_shader[NUM_LIGHT_SHADERS]  = {};
     ShaderProgram sv_shader[NUM_SHADOW_SHADERS] = {};
 
@@ -171,9 +174,6 @@ struct Renderer {
     f32 fov = 70.0f;
 
     UBO shared_data;
-
-    static constexpr f32 CLIP_NEAR = 0.5f;
-    static constexpr f32 CLIP_FAR  = 50.0f;
 
     Renderer(bool opengl_logging = false);
 
