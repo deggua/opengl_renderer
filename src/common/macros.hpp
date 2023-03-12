@@ -56,33 +56,33 @@
 #endif
 
 // TODO: check what this does in GDB, if it doesn't trigger a breakpoint at the abort call, use int3 or equiv
-#define ABORT(msg, ...)            \
-    do {                           \
-        fprintf(                   \
-            stderr,                \
-            "Aborted @ %s:%s:%d\n" \
-            "Reason: " msg "\n\n", \
-            __FILE__,              \
-            __func__,              \
-            __LINE__,              \
-            ##__VA_ARGS__);        \
-        BP_EXIT();                 \
+#define ABORT(msg, ...)               \
+    do {                              \
+        fprintf(                      \
+            stderr,                   \
+            "Aborted in %s @ %s:%d\n" \
+            "Reason: " msg "\n\n",    \
+            __func__,                 \
+            __FILE__,                 \
+            __LINE__,                 \
+            ##__VA_ARGS__);           \
+        BP_EXIT();                    \
     } while (0)
 
 // TODO: overload, 2+ args provides msg
-#define ASSERT(cond)                            \
-    do {                                        \
-        if (!(cond)) {                          \
-            fprintf(                            \
-                stderr,                         \
-                "Assertion failed @ %s:%s:%d\n" \
-                "Condition: %s\n\n",            \
-                __FILE__,                       \
-                __func__,                       \
-                __LINE__,                       \
-                #cond);                         \
-            BP_EXIT();                          \
-        }                                       \
+#define ASSERT(cond)                               \
+    do {                                           \
+        if (!(cond)) {                             \
+            fprintf(                               \
+                stderr,                            \
+                "Assertion failed in %s @ %s:%d\n" \
+                "Condition: %s\n\n",               \
+                __func__,                          \
+                __FILE__,                          \
+                __LINE__,                          \
+                #cond);                            \
+            BP_EXIT();                             \
+        }                                          \
     } while (0)
 
 #if ENABLE_LOGGING

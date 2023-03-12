@@ -19,12 +19,16 @@
 #include "common/opengl.hpp"
 #include "gfx/opengl.hpp"
 #include "gfx/renderer.hpp"
+#include "math/random.hpp"
 
-PointLight point_light = PointLight{
-    {0.0f, 0.0f, 0.0f},
-    {1.0f, 1.0f, 1.0f},
-    10.0f
-};
+PointLight point_light = PointLight().Position(0.0f, 0.0f, 0.0f).Color(1.0f, 1.0f, 1.0f).Intensity(10.0f);
+SunLight   sun_light   = SunLight().Direction({-1.0f, -1.0f, 0.0f}).Color(1.0f, 1.0f, 1.0f).Intensity(1.0f);
+SpotLight  spot_light  = SpotLight()
+                           .Direction({0.0f, -1.0f, 0.0f})
+                           .Position(0.0f, 0.0f, 0.0f)
+                           .Color(1.0f, 1.0f, 1.0f)
+                           .Intensity(10.0f)
+                           .Cutoff(30.0f, 45.0f);
 
 PlayerCamera g_Camera = PlayerCamera{
     .pos = glm::vec3(0.0f, 0.0f, 3.0f),
@@ -81,7 +85,9 @@ static void ProcessKeyboardInput(GLFWwindow* window)
         g_Camera.pos += normalize(dir_move) * move_speed * g_dt;
     }
 
-    point_light.pos = g_Camera.pos + 2.0f * dir_forward;
+    point_light.Position(g_Camera.pos + 2.0f * dir_forward);
+
+    spot_light.Position(g_Camera.pos + 0.25f * dir_up).Direction(dir_forward);
 }
 
 static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
@@ -115,6 +121,15 @@ static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
     g_Camera.pitch = glm::clamp(g_Camera.pitch + yoffset, -89.0f, 89.0f);
 }
 
+static void ProcessMouseButtonInput(GLFWwindow* window, int button, int action, int mods)
+{
+    (void)window;
+    (void)mods;
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
+        sun_light.dir = g_Camera.FacingDirection();
+    }
+}
+
 static void ErrorHandlerCallback(int error_code, const char* description)
 {
     ABORT("GLFW Error :: %s (%d)", description, error_code);
@@ -146,6 +161,8 @@ void RenderInit(GLFWwindow* window)
     TexturePool.Load(DefaultTexture_Diffuse, true, glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
     TexturePool.Load(DefaultTexture_Specular, true, glm::vec4(0.0f));
     TexturePool.Load(DefaultTexture_Normal, true, glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
+
+    Random_Seed_HighEntropy();
 }
 
 // TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but apparently
@@ -155,7 +172,7 @@ void RenderLoop(GLFWwindow* window)
 {
     constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
 
-    Renderer rt = Renderer(RENDER_ENABLE_OPENGL_LOGGING).ClearColor(0, 0, 0);
+    Renderer rt = Renderer(RENDER_ENABLE_OPENGL_LOGGING).ClearColor(0, 0, 0).FOV(70);
 
     std::vector<Object> objs = {
         Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
@@ -174,13 +191,10 @@ void RenderLoop(GLFWwindow* window)
         0.2f,
     };
 
-    SunLight sun_light = SunLight{
-        glm::normalize(glm::vec3{-1.0f, -1.0f, 0.0f}),
-        rgb_white,
-        1.0f,
-    };
-
     while (!glfwWindowShouldClose(window)) {
+        PointLight pt_dupe = point_light;
+        pt_dupe.pos += Random_InSphere(0.01f);
+
         UpdateTime(window);
         ProcessKeyboardInput(window);
 
@@ -195,7 +209,8 @@ void RenderLoop(GLFWwindow* window)
         rt.RenderPrepass();
         rt.RenderLighting(ambient_light, objs);
         rt.RenderLighting(sun_light, objs);
-        // rt.RenderLighting(point_light, objs);
+        // rt.RenderLighting(pt_dupe, objs);
+        rt.RenderLighting(spot_light, objs);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -226,6 +241,7 @@ int main()
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, ProcessMouseInput);
+    glfwSetMouseButtonCallback(window, ProcessMouseButtonInput);
 
     if (glewInit() != GLEW_OK) {
         glfwTerminate();

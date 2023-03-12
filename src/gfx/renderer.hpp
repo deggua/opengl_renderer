@@ -11,32 +11,98 @@
 
 struct AmbientLight {
     glm::vec3 color;
+    f32       intensity;
 
-    f32 intensity;
+    AmbientLight(const glm::vec3& color = glm::vec3(1.0f, 1.0f, 1.0f), f32 intensity = 1.0f);
+
+    AmbientLight& Color(f32 r, f32 g, f32 b);
+    AmbientLight& Color(const glm::vec3& color);
+    glm::vec3     Color() const;
+
+    AmbientLight& Intensity(f32 intensity);
+    f32           Intensity() const;
 };
 
 struct SunLight {
-    glm::vec3 dir;
+    glm::vec3 dir; // must be pre-normalized
     glm::vec3 color;
+    f32       intensity;
 
-    f32 intensity;
+    SunLight(
+        const glm::vec3& dir       = glm::vec3(0.0f, -1.0f, 0.0f),
+        const glm::vec3& color     = glm::vec3(1.0f, 1.0f, 1.0f),
+        f32              intensity = 1.0f);
+
+    SunLight& Direction(const glm::vec3& dir);
+    glm::vec3 Direction() const;
+
+    SunLight& Color(f32 r, f32 g, f32 b);
+    SunLight& Color(const glm::vec3& color);
+    glm::vec3 Color() const;
+
+    SunLight& Intensity(f32 intensity);
+    f32       Intensity() const;
 };
 
 struct SpotLight {
     glm::vec3 pos;
     glm::vec3 dir; // must be pre-normalized
     glm::vec3 color;
+    f32       inner_cutoff; // dot(dir, inner_dir) or cos(angle)
+    f32       outer_cutoff; // dot(dit, outer_dir) or cos(angle)
+    f32       intensity;
 
-    f32 inner_cutoff; // dot(dir, inner_dir)
-    f32 outer_cutoff; // dot(dit, outer_dir)
-    f32 intensity;
+    SpotLight(
+        const glm::vec3& pos       = glm::vec3(0.0f, 0.0f, 0.0f),
+        const glm::vec3& dir       = glm::vec3(0.0f, 0.0f, -1.0f),
+        const glm::vec3& color     = glm::vec3(1.0f, 1.0f, 1.0f),
+        f32              inner_deg = cosf(glm::radians(30.0f)),
+        f32              outer_deg = cosf(glm::radians(45.0f)),
+        f32              intensity = 1.0f);
+
+    SpotLight& Position(const glm::vec3& pos);
+    SpotLight& Position(f32 x, f32 y, f32 z);
+    glm::vec3  Position() const;
+
+    SpotLight& Direction(const glm::vec3& dir);
+    glm::vec3  Direction() const;
+
+    SpotLight& Color(f32 r, f32 g, f32 b);
+    SpotLight& Color(const glm::vec3& color);
+    glm::vec3  Color() const;
+
+    SpotLight& InnerCutoff(f32 angle_deg);
+    f32        InnerCutoff() const;
+
+    SpotLight& OuterCutoff(f32 angle_deg);
+    f32        OuterCutoff() const;
+
+    SpotLight& Cutoff(f32 inner_angle_deg, f32 outer_angle_deg);
+
+    SpotLight& Intensity(f32 intensity);
+    f32        Intensity() const;
 };
 
 struct PointLight {
     glm::vec3 pos;
     glm::vec3 color;
+    f32       intensity;
 
-    f32 intensity;
+    PointLight(
+        const glm::vec3& pos       = glm::vec3(0.0f, 0.0f, 0.0f),
+        const glm::vec3& color     = glm::vec3(1.0f, 1.0f, 1.0f),
+        f32              intensity = 1.0f);
+
+    PointLight& Position(const glm::vec3& pos);
+    PointLight& Position(f32 x, f32 y, f32 z);
+    glm::vec3   Position() const;
+
+    PointLight& Color(f32 r, f32 g, f32 b);
+    PointLight& Color(const glm::vec3& color);
+    glm::vec3   Color() const;
+
+    PointLight& Intensity(f32 intensity);
+    f32         Intensity() const;
 };
 
 enum class LightType {
@@ -106,8 +172,8 @@ struct Renderer {
 
     UBO shared_data;
 
-    static constexpr f32 CLIP_NEAR = 0.1f;
-    static constexpr f32 CLIP_FAR  = 100.0f;
+    static constexpr f32 CLIP_NEAR = 0.5f;
+    static constexpr f32 CLIP_FAR  = 50.0f;
 
     Renderer(bool opengl_logging = false);
 
