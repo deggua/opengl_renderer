@@ -56,6 +56,12 @@ void Texture2D::LoadTexture(FILE* fd)
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 
+    // TODO: this should be a configureable setting, also we shouldn't grab the value every time we load a texture
+    GLfloat max_anistropy;
+    GL(glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &max_anistropy));
+    GLfloat anistropy = glm::clamp(16.0f, 1.0f, max_anistropy);
+    GL(glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, anistropy));
+
     int width, height, num_channels;
     u8* image_data = stbi_load_from_file(fd, &width, &height, &num_channels, 0);
 

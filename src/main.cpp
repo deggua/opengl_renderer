@@ -180,6 +180,8 @@ void RenderInit(GLFWwindow* window)
     TexturePool.Load(DefaultTexture_Normal, true, glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
 
     Random_Seed_HighEntropy();
+
+    GL(glEnable(GL_MULTISAMPLE));
 }
 
 // TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but apparently
@@ -249,6 +251,8 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    // TODO: this should be a setting, also how do we reload it?
+    glfwWindowHint(GLFW_SAMPLES, 4);
 
     GLFWwindow* window = glfwCreateWindow(g_res_w, g_res_h, "Learn OpenGL", nullptr, nullptr);
     if (window == nullptr) {
