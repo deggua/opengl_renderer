@@ -2,14 +2,14 @@
 
 ![screenshot](assets/screenshot.png)
 
-Currently implements:
+## Currently implements:
 * Mesh importing (via Assimp)
 * Texture importing (via stb_image)
 * Blinn-Phong shading
 * Point lights, directional lights, and spot lights
 * Real-time shadow volumes (stencil shadows) for all light types via a geometry shader
 
-TODO:
+## TODO:
 * Shadow optimizations
 * Normal maps
 * HDR + tonemapping
@@ -24,7 +24,7 @@ TODO:
 * UI
 * Linux support (currently only tested on Windows)
 
-Might be implemented eventually:
+## Might be implemented eventually:
 * SSAO
 * SMAA
 * Soft stencil shadows (probably requires TAA or some form of temporal accumulation)
@@ -36,9 +36,10 @@ Might be implemented eventually:
 * Forward+ rendering
 * Order independent transparency
 
-Dependencies:
-* GLFW
-* GLEW
-* GLM
-* Assimp
-* stb_image
+## Dependencies:
+* make [(Windows)](https://gnuwin32.sourceforge.net/packages/make.htm)
+* [GLFW](https://github.com/glfw/glfw)
+* [GLEW](https://github.com/nigels-com/glew)
+* [GLM](https://github.com/g-truc/glm)
+* [assimp](https://github.com/assimp/assimp)
+* [stb_image](https://github.com/nothings/stb/blob/master/stb_image.h)
