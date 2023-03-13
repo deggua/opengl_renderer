@@ -42,6 +42,7 @@
             OPTIMIZE_UNREACHABLE; \
     } while (0)
 
+// TODO: could use __builtin_trap()
 #if !defined(NDEBUG)
 #    define BP_EXIT()             \
         do {                      \
@@ -49,10 +50,7 @@
             exit(EXIT_FAILURE);   \
         } while (0)
 #else
-#    define BP_EXIT()           \
-        do {                    \
-            exit(EXIT_FAILURE); \
-        } while (0)
+#    define BP_EXIT() exit(EXIT_FAILURE)
 #endif
 
 // TODO: check what this does in GDB, if it doesn't trigger a breakpoint at the abort call, use int3 or equiv
@@ -85,11 +83,39 @@
         }                                          \
     } while (0)
 
+#define ANSI_START "\x1B["
+#define ANSI_END   "m"
+
+#define ANSI_FG_RED    ";31"
+#define ANSI_FG_YELLOW ";33"
+#define ANSI_FG_BLUE   ";34"
+
+#define ANSI_BOLD  "1"
+#define ANSI_FAINT "2"
+#define ANSI_BLINK "5"
+
+#define ANSI_RESET_ALL   "\x1B[0m"
+#define ANSI(style, str) ANSI_START style ANSI_END str ANSI_RESET_ALL
+
+#define LOCATION_STYLE ANSI_FAINT
+#define ERROR_STYLE    ANSI_BOLD ANSI_FG_RED
+#define WARNING_STYLE  ANSI_BOLD ANSI_FG_YELLOW
+#define INFO_STYLE     ANSI_BOLD ANSI_FG_BLUE
+
+// TODO: ability to log to file
 #if ENABLE_LOGGING
-#    define LOG(msg, ...)                                                                                \
-        do {                                                                                             \
-            fprintf(stdout, "Log [%s:%s:%d] :: " msg "\n", __FILE__, __func__, __LINE__, ##__VA_ARGS__); \
-        } while (0)
+#    define _LOG_INTERNAL(prefix, msg, ...)                               \
+        fprintf(                                                          \
+            stdout,                                                       \
+            prefix ANSI(LOCATION_STYLE, " [%s:%d in '%s'] :: ") msg "\n", \
+            __FILE__,                                                     \
+            __LINE__,                                                     \
+            __PRETTY_FUNCTION__,                                          \
+            ##__VA_ARGS__)
 #else
-#    define LOG(msg, ...)
+#    define _LOG_INTERNAL(prefix, msg, ...)
 #endif
+
+#define LOG_ERROR(msg, ...)   _LOG_INTERNAL(ANSI(ERROR_STYLE, "ERROR  "), msg, ##__VA_ARGS__)
+#define LOG_WARNING(msg, ...) _LOG_INTERNAL(ANSI(WARNING_STYLE, "WARNING"), msg, ##__VA_ARGS__)
+#define LOG_INFO(msg, ...)    _LOG_INTERNAL(ANSI(INFO_STYLE, "INFO   "), msg, ##__VA_ARGS__)

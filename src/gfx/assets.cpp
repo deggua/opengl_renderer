@@ -119,6 +119,7 @@ static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
         Face face = Face(i0, i1, i2);
         // TODO: this does sort of work, but it also means that flat geometry (e.g. a cape that has no volume) will
         // not cast shadows, which sucks
+        // TODO: use find?
         if (unique_faces.contains(face.Mirror())) {
             unique_faces.erase(face.Mirror());
         } else {
@@ -169,19 +170,18 @@ static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
             adj[5] = opp_e2->second;
         }
 
-        // TODO: This works around an issue in sponza mesh
-        // NOTE: This doesn't solve the issue in breakfast where the sun is casting directly down, still needs
-        // investigation
+        // if a triangle is fully adjacent to itself then disable shadow geometry
         bool i1_not_unique = (adj[1] == adj[0]) || (adj[1] == adj[2]) || (adj[1] == adj[4]);
         bool i3_not_unique = (adj[3] == adj[0]) || (adj[3] == adj[2]) || (adj[3] == adj[4]);
         bool i5_not_unique = (adj[5] == adj[0]) || (adj[5] == adj[2]) || (adj[5] == adj[4]);
         if (i1_not_unique && i3_not_unique && i5_not_unique) {
-            // NOTE: this is definitely the error case, disabling the shadow mesh (by returning an empty vector)
-            // 'solves' the issue, but is not ideal (both because we don't want to even waste a pipeline stage on the
-            // empty mesh and because we still want shadows for degenerate objects). Simply removing the triangle
-            // doesn't solve the issue, so it's an interaction issue where it isn't the triangle itself but two
-            // triangles sharing the same single tri (or something to that effect)
-            LOG("Found single tri");
+            // TODO: This is kind of a catch all for buggy geometry if the above didn't work, but it isn't great for a
+            // few reasons:
+            //  * Disables shadow geometry completely
+            //  * Still creates an EBO and will lead to a draw call (not necessary)
+            // we could fix this by returning an std::optional<std::vector<GLuint>>, but we need a way for individual
+            // pieces of geometry to say they don't cast shadows as well as object groups
+            LOG_WARNING("Found single tri");
             return {};
         } else {
             indices.insert(indices.end(), std::begin(adj), std::end(adj));
@@ -378,7 +378,7 @@ Object::Object(std::string_view file_path)
     std::string_view directory = file_path.substr(0, file_path.find_last_of('/'));
     ProcessAssimpNode(this->models, *scene, *scene->mRootNode, directory);
 
-    LOG("Imported %zu models from '%s'", this->models.size(), fp.c_str());
+    LOG_INFO("Imported %zu models from '%s'", this->models.size(), fp.c_str());
 }
 
 void Object::DrawVisual(ShaderProgram& sp) const

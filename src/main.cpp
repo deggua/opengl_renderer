@@ -125,9 +125,26 @@ static void ProcessMouseButtonInput(GLFWwindow* window, int button, int action, 
 {
     (void)window;
     (void)mods;
+
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         sun_light.dir = g_Camera.FacingDirection();
     }
+}
+
+static void ProcessMouseScrollInput(GLFWwindow* window, double xoffset, double yoffset)
+{
+    (void)window;
+    (void)xoffset;
+
+    f32 angle_adj_deg   = yoffset * 1.0f;
+    f32 cur_angle_inner = spot_light.InnerCutoff();
+    f32 cur_angle_outer = spot_light.OuterCutoff();
+    f32 ratio           = cur_angle_outer / cur_angle_inner;
+
+    f32 new_angle_inner = glm::clamp(cur_angle_inner + angle_adj_deg, 10.0f, 120.0f);
+    f32 new_angle_outer = glm::clamp(new_angle_inner * ratio, 1.0f, 180.0f);
+
+    spot_light.Cutoff(new_angle_inner, new_angle_outer);
 }
 
 static void ErrorHandlerCallback(int error_code, const char* description)
@@ -172,7 +189,7 @@ void RenderLoop(GLFWwindow* window)
 {
     constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
 
-    Renderer rt = Renderer(RENDER_ENABLE_OPENGL_LOGGING).ClearColor(0, 0, 0).FOV(120);
+    Renderer rt = Renderer(RENDER_ENABLE_OPENGL_LOGGING).ClearColor(0, 0, 0).FOV(90);
 
     std::vector<Object> objs = {
         Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
@@ -192,8 +209,10 @@ void RenderLoop(GLFWwindow* window)
     };
 
     while (!glfwWindowShouldClose(window)) {
-        PointLight pt_dupe = point_light;
-        pt_dupe.pos += Random_InSphere(0.01f);
+        SunLight   sun_dupe = sun_light;
+        PointLight pt_dupe  = point_light;
+        SpotLight  sp_dupe  = spot_light;
+        // pt_dupe.pos += Random_InSphere(0.01f);
 
         UpdateTime(window);
         ProcessKeyboardInput(window);
@@ -208,9 +227,9 @@ void RenderLoop(GLFWwindow* window)
 
         rt.RenderPrepass();
         rt.RenderLighting(ambient_light, objs);
-        rt.RenderLighting(sun_light, objs);
+        rt.RenderLighting(sun_dupe, objs);
         // rt.RenderLighting(pt_dupe, objs);
-        rt.RenderLighting(spot_light, objs);
+        rt.RenderLighting(sp_dupe, objs);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -240,8 +259,13 @@ int main()
     glfwMakeContextCurrent(window);
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    if (glfwRawMouseMotionSupported()) {
+        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+    }
+
     glfwSetCursorPosCallback(window, ProcessMouseInput);
     glfwSetMouseButtonCallback(window, ProcessMouseButtonInput);
+    glfwSetScrollCallback(window, ProcessMouseScrollInput);
 
     if (glewInit() != GLEW_OK) {
         glfwTerminate();
@@ -250,6 +274,8 @@ int main()
 
     glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
     glfwSwapInterval(0);
+
+    LOG_INFO("GLFW initialized, starting renderer...");
 
     try {
         RenderInit(window);
