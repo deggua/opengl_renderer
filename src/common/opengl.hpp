@@ -10,7 +10,7 @@
 #include "common/types.hpp"
 
 #if RENDER_CHECK_OPENGL_CALLS
-[[maybe_unused]] static const char* glGetErrorString(GLenum err)
+[[maybe_unused]] static inline const char* glGetErrorString(GLenum err)
 {
     switch (err) {
         case GL_NO_ERROR:

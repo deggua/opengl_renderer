@@ -104,14 +104,19 @@
 
 // TODO: ability to log to file
 #if ENABLE_LOGGING
-#    define _LOG_INTERNAL(prefix, msg, ...)                               \
-        fprintf(                                                          \
-            stdout,                                                       \
-            prefix ANSI(LOCATION_STYLE, " [%s:%d in '%s'] :: ") msg "\n", \
-            __FILE__,                                                     \
-            __LINE__,                                                     \
-            __PRETTY_FUNCTION__,                                          \
-            ##__VA_ARGS__)
+#    if 0
+#        define _LOG_INTERNAL(prefix, msg, ...)                               \
+            fprintf(                                                          \
+                stdout,                                                       \
+                prefix ANSI(LOCATION_STYLE, " [%s:%d in '%s'] :: ") msg "\n", \
+                __FILE__,                                                     \
+                __LINE__,                                                     \
+                __PRETTY_FUNCTION__,                                          \
+                ##__VA_ARGS__)
+#    else
+#        define _LOG_INTERNAL(prefix, msg, ...) \
+            fprintf(stdout, prefix ANSI(LOCATION_STYLE, " | %20s:%-4d | ") msg "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#    endif
 #else
 #    define _LOG_INTERNAL(prefix, msg, ...)
 #endif

@@ -159,6 +159,9 @@ struct Renderer {
     static constexpr usize NUM_LIGHT_SHADERS  = 4; // point, spot, sun, ambient
     static constexpr usize NUM_SHADOW_SHADERS = 3; // point, spot, sun
 
+    static constexpr f32 SHADOW_OFFSET_FACTOR = 0.015f;
+    static constexpr f32 SHADOW_OFFSET_UNITS  = 1.0f;
+
     static constexpr f32 CLIP_NEAR = 0.1f;
     static constexpr f32 CLIP_FAR  = 50.0f;
 
@@ -171,7 +174,7 @@ struct Renderer {
     glm::mat4 mtx_vp; // cached by RenderPrepass
 
     u32 res_width = 1920, res_height = 1080;
-    f32 fov = 70.0f;
+    f32 fov = 90.0f;
 
     UBO shared_data;
 

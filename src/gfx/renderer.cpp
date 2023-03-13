@@ -388,6 +388,8 @@ static void APIENTRY OpenGL_Debug_Callback(
         }
     }();
 
+// TODO: write this to a file
+#if 0
     const auto severity_str = [severity]() {
         switch (severity) {
             case GL_DEBUG_SEVERITY_NOTIFICATION:
@@ -403,9 +405,8 @@ static void APIENTRY OpenGL_Debug_Callback(
         }
     }();
 
-    fprintf(
-        stdout,
-        "\n\nOpenGL Debug Log:\n"
+    LOG_INFO(
+        "\n\nOpenGL Debug Event:\n"
         "-----------------\n"
         "Source:   %s\n"
         "Type:     %s\n"
@@ -415,6 +416,15 @@ static void APIENTRY OpenGL_Debug_Callback(
         type_str,
         severity_str,
         message);
+#else
+    if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) {
+        LOG_INFO("Source: %s, Type: %s :: %s", src_str, type_str, message);
+    } else if (severity == GL_DEBUG_SEVERITY_LOW || severity == GL_DEBUG_SEVERITY_MEDIUM) {
+        LOG_WARNING("Source: %s, Type: %s :: %s", src_str, type_str, message);
+    } else {
+        LOG_ERROR("Source: %s, Type: %s :: %s", src_str, type_str, message);
+    }
+#endif
 }
 
 // Renderer
@@ -462,6 +472,7 @@ Renderer::Renderer(bool opengl_logging)
         GL(glEnable(GL_DEBUG_OUTPUT));
         GL(glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS));
         GL(glDebugMessageCallback(OpenGL_Debug_Callback, nullptr));
+        GL(glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, nullptr, GL_FALSE));
     }
 }
 
@@ -580,6 +591,9 @@ void Renderer::RenderLighting(const PointLight& light, const std::vector<Object>
         GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
         GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
 
+        GL(glEnable(GL_POLYGON_OFFSET_FILL));
+        GL(glPolygonOffset(SHADOW_OFFSET_FACTOR, SHADOW_OFFSET_UNITS));
+
         ShaderProgram& sp = this->sv_shader[(usize)ShaderType::Point];
         sp.UseProgram();
         sp.SetUniform("g_light_source.pos", light.pos);
@@ -613,6 +627,8 @@ void Renderer::RenderLighting(const PointLight& light, const std::vector<Object>
         // stencil buffer
         GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
         GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
+
+        GL(glDisable(GL_POLYGON_OFFSET_FILL));
 
         ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Point];
         sp.UseProgram();
@@ -655,6 +671,9 @@ void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>&
         GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
         GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
 
+        GL(glEnable(GL_POLYGON_OFFSET_FILL));
+        GL(glPolygonOffset(SHADOW_OFFSET_FACTOR, SHADOW_OFFSET_UNITS));
+
         ShaderProgram& sp = this->sv_shader[(usize)ShaderType::Spot];
         sp.UseProgram();
         sp.SetUniform("g_light_source.pos", light.pos);
@@ -691,6 +710,8 @@ void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>&
         // stencil buffer
         GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
         GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
+
+        GL(glDisable(GL_POLYGON_OFFSET_FILL));
 
         ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Spot];
         sp.UseProgram();
@@ -740,8 +761,7 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
         // better off just avoiding placing lights at certain angles to avoid Z fighting
         // or maybe there's a better solution
         GL(glEnable(GL_POLYGON_OFFSET_FILL));
-        GL(glPolygonOffset(0.015, 1.0));
-        // GL(glPolygonOffset(0.0f, 0.0f));
+        GL(glPolygonOffset(SHADOW_OFFSET_FACTOR, SHADOW_OFFSET_UNITS));
 
         ShaderProgram& sp = this->sv_shader[(usize)ShaderType::Sun];
         sp.UseProgram();

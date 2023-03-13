@@ -21,8 +21,8 @@ CC_FLAGS_PROFILE = $(CC_FLAGS_RELEASE) -pg -a
 
 # directories
 SRC_DIR = src
-OBJ_DIR = obj
 BIN_DIR = bin
+BUILD_DIR = build
 
 # normal source files
 SRCS = $(SRC_DIR)/main.cpp
@@ -37,11 +37,13 @@ SRCS += $(wildcard $(SRC_DIR)/math/*.cpp)
 # embedded data
 DATA = $(wildcard $(SRC_DIR)/shaders/*.glsl)
 
-DEBUG_OBJS = $(SRCS:src/%.cpp=obj/debug/%.o)
-DEBUG_OBJS += $(DATA:src/%.glsl=obj/debug/%.o)
+DEBUG_OBJS = $(SRCS:src/%.cpp=$(BUILD_DIR)/debug/%.o)
+DEBUG_OBJS += $(DATA:src/%.glsl=$(BUILD_DIR)/debug/%.o)
+DEBUG_DEPS = $(DEBUG_OBJS:%.o=%.d)
 
-RELEASE_OBJS = $(SRCS:src/%.cpp=obj/release/%.o)
-RELEASE_OBJS += $(DATA:src/%.glsl=obj/release/%.o)
+RELEASE_OBJS = $(SRCS:src/%.cpp=$(BUILD_DIR)/release/%.o)
+RELEASE_OBJS += $(DATA:src/%.glsl=$(BUILD_DIR)/release/%.o)
+RELEASE_DEPS = $(RELEASE_OBJS:%.o=%.d)
 
 # output file names
 DEBUG_FNAME 	:= debug.$(EXE_EXT)
@@ -49,44 +51,50 @@ RELEASE_FNAME 	:= release.$(EXE_EXT)
 SANITIZE_FNAME 	:= asan.$(EXE_EXT)
 PROFILE_FNAME 	:= gprof.$(EXE_EXT)
 
+# TODO: these don't work anymore
+#sanitize:
+#	$(shell if not exist "$(BIN_DIR)" mkdir "$(BIN_DIR)")
+#	$(CC) -o $(BIN_DIR)/$(SANITIZE_FNAME) $(CC_FLAGS_SANITIZE) $(SRCS)
+
+#profile:
+#	$(shell if not exist "$(BIN_DIR)" mkdir "$(BIN_DIR)")
+#	$(CC) -o $(BIN_DIR)/$(PROFILE_FNAME) $(CC_FLAGS_PROFILE) $(SRCS)
+
 all: debug release
 
-debug: $(BIN_DIR)/$(DEBUG_FNAME)
-
 release: $(BIN_DIR)/$(RELEASE_FNAME)
-
-$(BIN_DIR)/$(DEBUG_FNAME): $(DEBUG_OBJS)
-	$(shell if not exist "$(@D)" mkdir "$(@D)")
-	$(CC) -o $(BIN_DIR)/$(DEBUG_FNAME) $(CC_FLAGS_DEBUG) $(DEBUG_OBJS)
 
 $(BIN_DIR)/$(RELEASE_FNAME): $(RELEASE_OBJS)
 	$(shell if not exist "$(@D)" mkdir "$(@D)")
 	$(CC) -o $(BIN_DIR)/$(RELEASE_FNAME) $(CC_FLAGS_RELEASE) $(RELEASE_OBJS)
 
-obj/release/%.o: src/%.cpp
-	$(shell if not exist "$(@D)" mkdir "$(@D)")
-	$(CC) -o $@ $(CC_FLAGS_RELEASE) -c $<
+-include $(RELEASE_DEPS)
 
-obj/release/%.o: src/%.glsl
+$(BUILD_DIR)/release/%.o: $(SRC_DIR)/%.cpp
 	$(shell if not exist "$(@D)" mkdir "$(@D)")
-	$(OBJCOPY) $< $@ $(basename $(<F))_file 64bit
+	$(CC) -o $@ $(CC_FLAGS_RELEASE) -c $< -MMD
 
-obj/debug/%.o: src/%.cpp
-	$(shell if not exist "$(@D)" mkdir "$(@D)")
-	$(CC) -o $@ $(CC_FLAGS_DEBUG) -c $<
-
-obj/debug/%.o: src/%.glsl
+$(BUILD_DIR)/release/%.o: $(SRC_DIR)/%.glsl
 	$(shell if not exist "$(@D)" mkdir "$(@D)")
 	$(OBJCOPY) $< $@ $(basename $(<F))_file 64bit
 
-sanitize:
-	$(shell if not exist "$(BIN_DIR)" mkdir "$(BIN_DIR)")
-	$(CC) -o $(BIN_DIR)/$(SANITIZE_FNAME) $(CC_FLAGS_SANITIZE) $(SRCS)
+debug: $(BIN_DIR)/$(DEBUG_FNAME)
 
-profile:
-	$(shell if not exist "$(BIN_DIR)" mkdir "$(BIN_DIR)")
-	$(CC) -o $(BIN_DIR)/$(PROFILE_FNAME) $(CC_FLAGS_PROFILE) $(SRCS)
+$(BIN_DIR)/$(DEBUG_FNAME): $(DEBUG_OBJS)
+	$(shell if not exist "$(@D)" mkdir "$(@D)")
+	$(CC) -o $(BIN_DIR)/$(DEBUG_FNAME) $(CC_FLAGS_DEBUG) $(DEBUG_OBJS)
 
+-include $(DEBUG_DEPS)
+
+$(BUILD_DIR)/debug/%.o: $(SRC_DIR)/%.cpp
+	$(shell if not exist "$(@D)" mkdir "$(@D)")
+	$(CC) -o $@ $(CC_FLAGS_DEBUG) -c $< -MMD
+
+$(BUILD_DIR)/debug/%.o: $(SRC_DIR)/%.glsl
+	$(shell if not exist "$(@D)" mkdir "$(@D)")
+	$(OBJCOPY) $< $@ $(basename $(<F))_file 64bit
+
+.PHONY: clean
 clean:
-	rmdir /s /q $(BIN_DIR)
-	rmdir /s /q $(OBJ_DIR)
+	$(shell if exist "$(BIN_DIR)" rmdir /s /q "$(BIN_DIR)")
+	$(shell if exist "$(BUILD_DIR)" rmdir /s /q "$(BUILD_DIR)")
