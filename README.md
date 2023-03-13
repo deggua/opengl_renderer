@@ -1,4 +1,7 @@
 # A real-time renderer using OpenGL
+
+![screenshot](assets/screenshot.png)
+
 Currently implements:
 * Mesh importing (via Assimp)
 * Texture importing (via stb_image)
@@ -10,7 +13,7 @@ TODO:
 * Shadow optimizations
 * Normal maps
 * HDR + tonemapping
-* Anti-aliasing
+* Anti-aliasing (MSAA)
 * Anistropic filtering
 * Skyboxes
 * Cubemap reflections
@@ -23,7 +26,8 @@ TODO:
 
 Might be implemented eventually:
 * SSAO
-* Soft stencil shadows
+* SMAA
+* Soft stencil shadows (probably requires TAA or some form of temporal accumulation)
 * Shadow maps
 * Planar shadows
 * Parallax maps
