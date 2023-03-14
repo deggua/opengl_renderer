@@ -13,6 +13,8 @@ SHADER_FILE(VS_Common);
 SHADER_FILE(FS_Lighting);
 SHADER_FILE(FS_ShadowVolume);
 SHADER_FILE(GS_ShadowVolume);
+SHADER_FILE(FS_Skybox);
+SHADER_FILE(VS_Skybox);
 
 // SHADER_FILE(VS_ShadowVolume);
 
@@ -427,6 +429,84 @@ static void APIENTRY OpenGL_Debug_Callback(
 #endif
 }
 
+static const glm::vec3 skybox_vertices[] = {
+    {-1.0f,  1.0f, -1.0f},
+    {-1.0f, -1.0f, -1.0f},
+    { 1.0f, -1.0f, -1.0f},
+    { 1.0f, -1.0f, -1.0f},
+    { 1.0f,  1.0f, -1.0f},
+    {-1.0f,  1.0f, -1.0f},
+    {-1.0f, -1.0f,  1.0f},
+    {-1.0f, -1.0f, -1.0f},
+    {-1.0f,  1.0f, -1.0f},
+    {-1.0f,  1.0f, -1.0f},
+    {-1.0f,  1.0f,  1.0f},
+    {-1.0f, -1.0f,  1.0f},
+    { 1.0f, -1.0f, -1.0f},
+    { 1.0f, -1.0f,  1.0f},
+    { 1.0f,  1.0f,  1.0f},
+    { 1.0f,  1.0f,  1.0f},
+    { 1.0f,  1.0f, -1.0f},
+    { 1.0f, -1.0f, -1.0f},
+    {-1.0f, -1.0f,  1.0f},
+    {-1.0f,  1.0f,  1.0f},
+    { 1.0f,  1.0f,  1.0f},
+    { 1.0f,  1.0f,  1.0f},
+    { 1.0f, -1.0f,  1.0f},
+    {-1.0f, -1.0f,  1.0f},
+    {-1.0f,  1.0f, -1.0f},
+    { 1.0f,  1.0f, -1.0f},
+    { 1.0f,  1.0f,  1.0f},
+    { 1.0f,  1.0f,  1.0f},
+    {-1.0f,  1.0f,  1.0f},
+    {-1.0f,  1.0f, -1.0f},
+    {-1.0f, -1.0f, -1.0f},
+    {-1.0f, -1.0f,  1.0f},
+    { 1.0f, -1.0f, -1.0f},
+    { 1.0f, -1.0f, -1.0f},
+    {-1.0f, -1.0f,  1.0f},
+    { 1.0f, -1.0f,  1.0f}
+};
+
+Skybox::Skybox(std::string_view skybox_path)
+{
+    // TODO: decouple the extension
+    static const char* skybox_ext[] = {
+        "/posx.jpg",
+        "/negx.jpg",
+        "/posy.jpg",
+        "/negy.jpg",
+        "/posz.jpg",
+        "/negz.jpg",
+    };
+
+    std::array<std::string, 6> faces;
+
+    for (usize ii = 0; ii < lengthof(skybox_ext); ii++) {
+        faces[ii] = std::string(skybox_path) + skybox_ext[ii];
+    }
+
+    this->tex = TextureCubemap(faces);
+
+    this->vao.Reserve();
+    this->vao.Bind();
+
+    this->vbo.Reserve();
+    this->vbo.LoadData(sizeof(skybox_vertices), &skybox_vertices, GL_STATIC_DRAW);
+
+    this->vbo.Bind();
+    this->vao.SetAttribute(0, 3, GL_FLOAT, sizeof(glm::vec3), 0);
+}
+
+void Skybox::Draw() const
+{
+    GL(glActiveTexture(GL_TEXTURE0));
+    this->tex.Bind();
+
+    this->vao.Bind();
+    GL(glDrawArrays(GL_TRIANGLES, 0, lengthof(skybox_vertices)));
+}
+
 // Renderer
 Renderer::Renderer(bool opengl_logging)
 {
@@ -444,6 +524,9 @@ Renderer::Renderer(bool opengl_logging)
     Shader gs_spot = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Spot, GS_ShadowVolume.src, GS_ShadowVolume.len);
     Shader gs_sun  = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Sun, GS_ShadowVolume.src, GS_ShadowVolume.len);
 
+    Shader vs_skybox = CompileShader(GL_VERTEX_SHADER, VS_Skybox.src, VS_Skybox.len);
+    Shader fs_skybox = CompileShader(GL_FRAGMENT_SHADER, FS_Skybox.src, FS_Skybox.len);
+
     this->dl_shader[(usize)ShaderType::Ambient] = LinkShaders(vs_common, fs_ambient);
     this->dl_shader[(usize)ShaderType::Point]   = LinkShaders(vs_common, fs_point);
     this->dl_shader[(usize)ShaderType::Spot]    = LinkShaders(vs_common, fs_spot);
@@ -453,14 +536,20 @@ Renderer::Renderer(bool opengl_logging)
     this->sv_shader[(usize)ShaderType::Spot]  = LinkShaders(vs_common, gs_spot, fs_shadow);
     this->sv_shader[(usize)ShaderType::Sun]   = LinkShaders(vs_common, gs_sun, fs_shadow);
 
+    this->sky_shader = LinkShaders(vs_skybox, fs_skybox);
+
     // TODO: might need different handling if more textures of each type are enabled
     // TODO: using a UBO might be better but we only pay this cost once at startup
     // setup texture indices in shaders that use them
     for (ShaderProgram& sp : this->dl_shader) {
+        sp.UseProgram();
         sp.SetUniform("g_material.diffuse", 0);
         sp.SetUniform("g_material.specular", 1);
         sp.SetUniform("g_material.normal", 2);
     }
+
+    this->sky_shader.UseProgram();
+    this->sky_shader.SetUniform("skybox", 0);
 
     // setup the shared UBO
     this->shared_data.Reserve(SHARED_DATA_SIZE);
@@ -521,7 +610,7 @@ void Renderer::RenderPrepass()
     // cache the VP matrix for this render pass
     f32       aspect   = (f32)res_width / (f32)res_height;
     glm::mat4 mtx_proj = glm::perspective(glm::radians(this->fov), aspect, CLIP_NEAR, CLIP_FAR);
-    this->mtx_vp       = mtx_proj * mtx_view;
+    this->mtx_vp       = mtx_proj * this->mtx_view;
 
     // Update UBO for VP matrix and View Position
     SharedData tmp = {
@@ -816,4 +905,19 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
 
     // clear the stencil buffer once we're done
     GL(glClear(GL_STENCIL_BUFFER_BIT));
+}
+
+void Renderer::RenderSkybox(const Skybox& sky)
+{
+    GL(glDepthFunc(GL_LEQUAL));
+
+    f32       aspect   = (f32)res_width / (f32)res_height;
+    glm::mat4 mtx_proj = glm::perspective(glm::radians(this->fov), aspect, CLIP_NEAR, CLIP_FAR);
+    glm::mat4 vp_fixed = mtx_proj * glm::mat4(glm::mat3(this->mtx_view));
+
+    ShaderProgram& sp = this->sky_shader;
+    sp.UseProgram();
+    sp.SetUniform("g_mtx_vp_fixed", vp_fixed);
+
+    sky.Draw();
 }

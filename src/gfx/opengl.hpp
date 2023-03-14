@@ -2,6 +2,7 @@
 
 #include <GL/glew.h>
 
+#include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -49,6 +50,18 @@ struct Texture2D : Handle<GLuint> {
 
 private:
     void LoadTexture(FILE* fd);
+};
+
+struct TextureCubemap : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
+
+    static Handle<GLuint> Bound;
+
+    TextureCubemap(const std::array<std::string, 6>& faces);
+
+    void Bind() const;
+    void Reserve();
+    void Delete();
 };
 
 struct Shader : Handle<GLuint> {

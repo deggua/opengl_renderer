@@ -39,8 +39,8 @@ PlayerCamera g_Camera = PlayerCamera{
 f32 g_dt = 0.0f;
 f32 g_t  = 0.0f;
 
-u32 g_res_w = 1280;
-u32 g_res_h = 720;
+u32 g_res_w = 1920;
+u32 g_res_h = 1080;
 
 u32 g_res_w_old = g_res_w;
 u32 g_res_h_old = g_res_h;
@@ -191,7 +191,8 @@ void RenderLoop(GLFWwindow* window)
 {
     constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
 
-    Renderer rt = Renderer(RENDER_ENABLE_OPENGL_LOGGING).ClearColor(0, 0, 0).FOV(90);
+    Renderer rt  = Renderer(RENDER_ENABLE_OPENGL_LOGGING).ClearColor(0, 0, 0).FOV(90);
+    Skybox   sky = Skybox("assets/tex/sky0");
 
     std::vector<Object> objs = {
         Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
@@ -232,6 +233,7 @@ void RenderLoop(GLFWwindow* window)
         rt.RenderLighting(sun_dupe, objs);
         // rt.RenderLighting(pt_dupe, objs);
         rt.RenderLighting(sp_dupe, objs);
+        rt.RenderSkybox(sky);
 
         glfwSwapBuffers(window);
         glfwPollEvents();

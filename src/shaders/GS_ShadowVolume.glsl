@@ -36,7 +36,12 @@ struct Vertices {
 };
 
 layout(triangles_adjacency) in; // six vertices in
-layout(triangle_strip, max_vertices = 18) out;
+
+#if LIGHT_TYPE == SUN_LIGHT
+layout(triangle_strip, max_vertices = 12) out; // 12 out for sun, 3*3 + 3
+#else
+layout(triangle_strip, max_vertices = 18) out; // 18 out for the rest, 4*3 + 3 + 3
+#endif
 
 in vec3 vo_vtx_pos[]; // an array of 6 vertices (triangle with adjacency)
 in vec3 vo_vtx_normal[];
@@ -153,7 +158,7 @@ void EmitVolume(PointLight light, Vertices verts, Edges edges, mat4 mtx_vp)
     }
 }
 
-void EmitQuad(SunLight light, vec3 start_vertex, vec3 end_vertex, mat4 mtx_vp)
+void EmitTri(SunLight light, vec3 start_vertex, vec3 end_vertex, mat4 mtx_vp)
 {
     vec3 light_dir = light.dir;
 
@@ -167,10 +172,6 @@ void EmitQuad(SunLight light, vec3 start_vertex, vec3 end_vertex, mat4 mtx_vp)
 
     // Vertex #3: the ending vertex (just a tiny bit below the original edge)
     gl_Position = mtx_vp * vec4((end_vertex + light_dir * EPSILON), 1.0);
-    EmitVertex();
-
-    // Vertex #4: the ending vertex projected to infinity
-    gl_Position = mtx_vp * vec4(light_dir, 0.0);
     EmitVertex();
 
     EndPrimitive();
@@ -191,7 +192,7 @@ void EmitVolume(SunLight light, Vertices verts, Edges edges, mat4 mtx_vp)
     if (dot(normal, light_dir) <= 0) {
         vec3 vtx_start = verts.v0;
         vec3 vtx_end   = verts.v2;
-        EmitQuad(light, vtx_start, vtx_end, mtx_vp);
+        EmitTri(light, vtx_start, vtx_end, mtx_vp);
     }
 
     normal = cross(edges.e4, edges.e5);
@@ -199,7 +200,7 @@ void EmitVolume(SunLight light, Vertices verts, Edges edges, mat4 mtx_vp)
     if (dot(normal, light_dir) <= 0) {
         vec3 vtx_start = verts.v2;
         vec3 vtx_end   = verts.v4;
-        EmitQuad(light, vtx_start, vtx_end, mtx_vp);
+        EmitTri(light, vtx_start, vtx_end, mtx_vp);
     }
 
     normal = cross(edges.e2, edges.e6);
@@ -207,7 +208,7 @@ void EmitVolume(SunLight light, Vertices verts, Edges edges, mat4 mtx_vp)
     if (dot(normal, light_dir) <= 0) {
         vec3 vtx_start = verts.v4;
         vec3 vtx_end   = verts.v0;
-        EmitQuad(light, vtx_start, vtx_end, mtx_vp);
+        EmitTri(light, vtx_start, vtx_end, mtx_vp);
     }
 
     // render the front cap
@@ -221,12 +222,6 @@ void EmitVolume(SunLight light, Vertices verts, Edges edges, mat4 mtx_vp)
     gl_Position = mtx_vp * vec4((verts.v4 + light_dir * EPSILON), 1.0);
     EmitVertex();
     EndPrimitive();
-
-    // render the back cap
-    gl_Position = mtx_vp * vec4(light_dir, 0.0);
-    EmitVertex();
-    EmitVertex();
-    EmitVertex();
 }
 
 void EmitQuad(SpotLight light, vec3 start_vertex, vec3 end_vertex, mat4 mtx_vp)

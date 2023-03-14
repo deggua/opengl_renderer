@@ -134,6 +134,15 @@ struct PlayerCamera {
     glm::mat4 ViewMatrix() const;
 };
 
+struct Skybox {
+    TextureCubemap tex;
+    VAO            vao;
+    VBO            vbo;
+
+    Skybox(std::string_view skybox_path);
+    void Draw() const;
+};
+
 struct Renderer {
     enum class ShaderType {
         None  = -1,
@@ -167,6 +176,7 @@ struct Renderer {
 
     ShaderProgram dl_shader[NUM_LIGHT_SHADERS]  = {};
     ShaderProgram sv_shader[NUM_SHADOW_SHADERS] = {};
+    ShaderProgram sky_shader;
 
     glm::mat4 mtx_view;
     glm::vec3 pos_view;
@@ -193,4 +203,5 @@ struct Renderer {
     void RenderLighting(const PointLight& light, const std::vector<Object>& objs);
     void RenderLighting(const SpotLight& light, const std::vector<Object>& objs);
     void RenderLighting(const SunLight& light, const std::vector<Object>& objs);
+    void RenderSkybox(const Skybox& sky);
 };
