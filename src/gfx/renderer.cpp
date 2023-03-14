@@ -9,12 +9,12 @@
 #include "common.hpp"
 #include "gfx/opengl.hpp"
 
-SHADER_FILE(VS_Common);
-SHADER_FILE(FS_Lighting);
-SHADER_FILE(FS_ShadowVolume);
-SHADER_FILE(GS_ShadowVolume);
-SHADER_FILE(FS_Skybox);
-SHADER_FILE(VS_Skybox);
+SHADER_FILE(Common_VS);
+SHADER_FILE(Lighting_FS);
+SHADER_FILE(ShadowVolume_FS);
+SHADER_FILE(ShadowVolume_GS);
+SHADER_FILE(Skybox_FS);
+SHADER_FILE(Skybox_VS);
 
 // SHADER_FILE(VS_ShadowVolume);
 
@@ -510,22 +510,22 @@ void Skybox::Draw() const
 // Renderer
 Renderer::Renderer(bool opengl_logging)
 {
-    Shader vs_common = CompileShader(GL_VERTEX_SHADER, VS_Common.src, VS_Common.len);
+    Shader vs_common = CompileShader(GL_VERTEX_SHADER, Common_VS.src, Common_VS.len);
 
-    Shader fs_shadow = CompileShader(GL_FRAGMENT_SHADER, FS_ShadowVolume.src, FS_ShadowVolume.len);
+    Shader fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
 
-    Shader fs_ambient = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Ambient, FS_Lighting.src, FS_Lighting.len);
-    Shader fs_point   = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Point, FS_Lighting.src, FS_Lighting.len);
-    Shader fs_spot    = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Spot, FS_Lighting.src, FS_Lighting.len);
-    Shader fs_sun     = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Sun, FS_Lighting.src, FS_Lighting.len);
+    Shader fs_ambient = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Ambient, Lighting_FS.src, Lighting_FS.len);
+    Shader fs_point   = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Point, Lighting_FS.src, Lighting_FS.len);
+    Shader fs_spot    = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Spot, Lighting_FS.src, Lighting_FS.len);
+    Shader fs_sun     = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Sun, Lighting_FS.src, Lighting_FS.len);
 
     Shader gs_point
-        = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Point, GS_ShadowVolume.src, GS_ShadowVolume.len);
-    Shader gs_spot = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Spot, GS_ShadowVolume.src, GS_ShadowVolume.len);
-    Shader gs_sun  = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Sun, GS_ShadowVolume.src, GS_ShadowVolume.len);
+        = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Point, ShadowVolume_GS.src, ShadowVolume_GS.len);
+    Shader gs_spot = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Spot, ShadowVolume_GS.src, ShadowVolume_GS.len);
+    Shader gs_sun  = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Sun, ShadowVolume_GS.src, ShadowVolume_GS.len);
 
-    Shader vs_skybox = CompileShader(GL_VERTEX_SHADER, VS_Skybox.src, VS_Skybox.len);
-    Shader fs_skybox = CompileShader(GL_FRAGMENT_SHADER, FS_Skybox.src, FS_Skybox.len);
+    Shader vs_skybox = CompileShader(GL_VERTEX_SHADER, Skybox_VS.src, Skybox_VS.len);
+    Shader fs_skybox = CompileShader(GL_FRAGMENT_SHADER, Skybox_FS.src, Skybox_FS.len);
 
     this->dl_shader[(usize)ShaderType::Ambient] = LinkShaders(vs_common, fs_ambient);
     this->dl_shader[(usize)ShaderType::Point]   = LinkShaders(vs_common, fs_point);

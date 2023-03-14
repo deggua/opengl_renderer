@@ -175,13 +175,14 @@ void RenderInit(GLFWwindow* window)
 {
     (void)window;
 
-    TexturePool.Load(DefaultTexture_Diffuse, true, glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
-    TexturePool.Load(DefaultTexture_Specular, true, glm::vec4(0.0f));
-    TexturePool.Load(DefaultTexture_Normal, true, glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
+    TexturePool.LoadStatic(DefaultTexture_Diffuse, Texture2D(glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
+    TexturePool.LoadStatic(DefaultTexture_Specular, Texture2D(glm::vec4(0.0f)));
+    TexturePool.LoadStatic(DefaultTexture_Normal, Texture2D(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f)));
 
     Random_Seed_HighEntropy();
 
     GL(glEnable(GL_MULTISAMPLE));
+    // GL(glEnable(GL_FRAMEBUFFER_SRGB));
 }
 
 // TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but apparently
@@ -208,7 +209,7 @@ void RenderLoop(GLFWwindow* window)
     // TODO: how should we construct light sources?
     AmbientLight ambient_light = AmbientLight{
         rgb_white,
-        0.2f,
+        0.05f,
     };
 
     while (!glfwWindowShouldClose(window)) {

@@ -38,24 +38,17 @@ struct Uniform : Handle<GLint> {
 struct Texture2D : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
-    static Handle<GLuint> Bound;
-
-    Texture2D(const char* file_path);
-    Texture2D(FILE* fd);
+    Texture2D(const std::string& path);
     Texture2D(const glm::vec4& color);
 
     void Bind() const;
+    void Unbind() const;
     void Reserve();
     void Delete();
-
-private:
-    void LoadTexture(FILE* fd);
 };
 
 struct TextureCubemap : Handle<GLuint> {
     using Handle<GLuint>::Handle;
-
-    static Handle<GLuint> Bound;
 
     TextureCubemap(const std::array<std::string, 6>& faces);
 
@@ -71,18 +64,11 @@ struct Shader : Handle<GLuint> {
 struct ShaderProgram : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
-    static Handle<GLuint> Bound;
-
     std::vector<Uniform> uniforms;
 
     void UseProgram() const
     {
-        if (Bound.handle == this->handle) {
-            return;
-        }
-
         GL(glUseProgram(GLuint(*this)));
-        ShaderProgram::Bound = this->handle;
     }
 
     // TODO:

@@ -10,7 +10,9 @@
 #include <unordered_set>
 #include <vector>
 
-AssetPool<Texture2D> TexturePool(32);
+#include "gfx/cache.hpp"
+
+AssetCache<Texture2D> TexturePool(32);
 
 template<>
 struct std::hash<aiVector3D> {
@@ -273,8 +275,8 @@ void Geometry::DrawShadow(ShaderProgram& sp) const
 // Material
 Material::Material()
 {
-    this->diffuse  = TexturePool.Take(DefaultTexture_Diffuse);
-    this->specular = TexturePool.Take(DefaultTexture_Specular);
+    this->diffuse  = TexturePool.Load(DefaultTexture_Diffuse);
+    this->specular = TexturePool.Load(DefaultTexture_Specular);
     this->gloss    = 0.0f;
 }
 
@@ -287,9 +289,9 @@ Material::Material(const aiMaterial& material, std::string_view directory)
         std::stringstream file_path;
         file_path << directory << "/" << diffuse_path.C_Str();
 
-        this->diffuse = TexturePool.Take(file_path.str());
+        this->diffuse = TexturePool.Load(file_path.str());
     } else {
-        this->diffuse = TexturePool.Take(DefaultTexture_Diffuse);
+        this->diffuse = TexturePool.Load(DefaultTexture_Diffuse);
     }
 
     if (material.GetTextureCount(aiTextureType_SPECULAR)) {
@@ -299,9 +301,9 @@ Material::Material(const aiMaterial& material, std::string_view directory)
         std::stringstream file_path;
         file_path << directory << "/" << specular_path.C_Str();
 
-        this->specular = TexturePool.Take(file_path.str());
+        this->specular = TexturePool.Load(file_path.str());
     } else {
-        this->specular = TexturePool.Take(DefaultTexture_Specular);
+        this->specular = TexturePool.Load(DefaultTexture_Specular);
     }
 
     // set the gloss
@@ -379,6 +381,16 @@ Object::Object(std::string_view file_path)
     ProcessAssimpNode(this->models, *scene, *scene->mRootNode, directory);
 
     LOG_INFO("Imported %zu models from '%s'", this->models.size(), fp.c_str());
+
+    usize tri_count_visual = 0;
+    usize tri_count_shadow = 0;
+    for (const auto& iter : this->models) {
+        tri_count_visual += iter.geometry.len_visual / 3;
+        tri_count_shadow += iter.geometry.len_shadow / 6;
+    };
+
+    LOG_INFO("Visual Tri Count = %zu", tri_count_visual);
+    LOG_INFO("Shadow Tri Count = %zu", tri_count_shadow);
 }
 
 void Object::DrawVisual(ShaderProgram& sp) const

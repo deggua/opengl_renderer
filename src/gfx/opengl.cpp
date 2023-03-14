@@ -9,9 +9,6 @@
 
 #include "common.hpp"
 
-Handle<GLuint> ShaderProgram::Bound = 0;
-Handle<GLuint> Texture2D::Bound     = 0;
-
 Shader CompileShader(GLenum shader_type, GLsizei count, const GLchar** src, const GLint* len)
 {
     ASSERT(count > 0);
@@ -46,9 +43,12 @@ Shader CompileShader(GLenum shader_type, const char* src, i32 len)
     return CompileShader(shader_type, 1, &src_gl, &len_gl);
 }
 
-void Texture2D::LoadTexture(FILE* fd)
+/* --- Texture2D --- */
+Texture2D::Texture2D(const std::string& path)
 {
-    // TODO: some of these should be methods like tex.SetParameter, tex.GenerateMipmap, etc.
+    // TODO: some of these should be methods like tex.SetParameter, tex.GenerateMipmap, etc. (I think, maybe they can't
+    // be changed after loading)
+    this->Reserve();
     this->Bind();
 
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
@@ -63,40 +63,30 @@ void Texture2D::LoadTexture(FILE* fd)
     GL(glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, anistropy));
 
     int width, height, num_channels;
-    u8* image_data = stbi_load_from_file(fd, &width, &height, &num_channels, 0);
-
+    u8* image_data = stbi_load(path.c_str(), &width, &height, &num_channels, 0);
     if (!image_data) {
         ABORT("Failed to load texture");
     }
 
-    GLenum color_fmt = (num_channels == 3 ? GL_RGB : GL_RGBA);
+    // NOTE: this is pretty dumb, but a common convention for normal maps
+    // TODO: this doesn't detect, e.g. specular maps, but we don't have any yet
+    bool is_srgb = (path.find("_ddn.") == std::string::npos);
+    LOG_INFO("Texture '%s' %s in sRGB", path.c_str(), is_srgb ? "is" : "is not");
 
-    GL(glTexImage2D(GL_TEXTURE_2D, 0, color_fmt, width, height, 0, color_fmt, GL_UNSIGNED_BYTE, image_data));
+    GLenum color_fmt = (num_channels == 3) ? GL_RGB : GL_RGBA;
+    GLenum internal_fmt;
+    if (is_srgb) {
+        internal_fmt = (num_channels == 3) ? GL_SRGB8 : GL_SRGB8_ALPHA8;
+    } else {
+        internal_fmt = (num_channels == 3) ? GL_RGB8 : GL_RGBA8;
+    }
+
+    GL(glTexImage2D(GL_TEXTURE_2D, 0, internal_fmt, width, height, 0, color_fmt, GL_UNSIGNED_BYTE, image_data));
     GL(glGenerateMipmap(GL_TEXTURE_2D));
 
     stbi_image_free(image_data);
-}
 
-// Texture2D
-Texture2D::Texture2D(FILE* fd)
-{
-    GL(glGenTextures(1, &this->handle));
-
-    this->LoadTexture(fd);
-}
-
-Texture2D::Texture2D(const char* file_path)
-{
-    GL(glGenTextures(1, &this->handle));
-
-    FILE* fd = fopen(file_path, "rb");
-    if (!fd) {
-        ABORT("Failed to open file: %s", file_path);
-    }
-
-    this->LoadTexture(fd);
-
-    fclose(fd);
+    this->Unbind();
 }
 
 Texture2D::Texture2D(const glm::vec4& color)
@@ -106,26 +96,24 @@ Texture2D::Texture2D(const glm::vec4& color)
 
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
-    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
+    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 
     const u8 buf[4] = {(u8)(color.r * 255.0f), (u8)(color.g * 255.0f), (u8)(color.b * 255.0f), (u8)(color.a * 255.0f)};
 
-    GL(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf));
-    GL(glGenerateMipmap(GL_TEXTURE_2D));
+    GL(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf));
+
+    this->Unbind();
 }
 
-// TODO: this doesn't completely eliminate needless binds because we still do binding for slots
-// in the render loop, we could track what texture handles are assigned to what texture slots
-// but I'm not sure if the slots are used for other things as well, e.g. non-Texture2Ds
 void Texture2D::Bind() const
 {
-    if (Texture2D::Bound.handle == this->handle) {
-        return;
-    }
-
     GL(glBindTexture(GL_TEXTURE_2D, this->handle));
-    Texture2D::Bound.handle = this->handle;
+}
+
+void Texture2D::Unbind() const
+{
+    GL(glBindTexture(GL_TEXTURE_2D, 0));
 }
 
 void Texture2D::Reserve()
@@ -154,10 +142,11 @@ TextureCubemap::TextureCubemap(const std::array<std::string, 6>& faces)
             ABORT("Failed to load cubemap texture from '%s'", path);
         }
 
+        // NOTE: we assume cubemaps are always in sRGB space
         GL(glTexImage2D(
             GL_TEXTURE_CUBE_MAP_POSITIVE_X + ii,
             0,
-            GL_RGB,
+            GL_SRGB8,
             width,
             height,
             0,
