@@ -102,60 +102,62 @@ void EmitVolume(PointLight light, Vertices verts, Edges edges, mat4 mtx_vp)
     vec3 light_dir = light.pos - verts.v0;
 
     // Handle only light facing triangles
-    if (dot(normal, light_dir) > 0) {
-        normal = cross(edges.e3, edges.e1);
-
-        if (dot(normal, light_dir) <= 0) {
-            vec3 vtx_start = verts.v0;
-            vec3 vtx_end   = verts.v2;
-            EmitQuad(light, vtx_start, vtx_end, mtx_vp);
-        }
-
-        normal    = cross(edges.e4, edges.e5);
-        light_dir = light.pos - verts.v2;
-
-        if (dot(normal, light_dir) <= 0) {
-            vec3 vtx_start = verts.v2;
-            vec3 vtx_end   = verts.v4;
-            EmitQuad(light, vtx_start, vtx_end, mtx_vp);
-        }
-
-        normal    = cross(edges.e2, edges.e6);
-        light_dir = light.pos - verts.v4;
-
-        if (dot(normal, light_dir) <= 0) {
-            vec3 vtx_start = verts.v4;
-            vec3 vtx_end   = verts.v0;
-            EmitQuad(light, vtx_start, vtx_end, mtx_vp);
-        }
-
-        // render the front cap
-        light_dir   = normalize(verts.v0 - light.pos);
-        gl_Position = mtx_vp * vec4((verts.v0 + light_dir * EPSILON), 1.0);
-        EmitVertex();
-
-        light_dir   = normalize(verts.v2 - light.pos);
-        gl_Position = mtx_vp * vec4((verts.v2 + light_dir * EPSILON), 1.0);
-        EmitVertex();
-
-        light_dir   = normalize(verts.v4 - light.pos);
-        gl_Position = mtx_vp * vec4((verts.v4 + light_dir * EPSILON), 1.0);
-        EmitVertex();
-        EndPrimitive();
-
-        // render the back cap
-        light_dir   = verts.v0 - light.pos;
-        gl_Position = mtx_vp * vec4(light_dir, 0.0);
-        EmitVertex();
-
-        light_dir   = verts.v4 - light.pos;
-        gl_Position = mtx_vp * vec4(light_dir, 0.0);
-        EmitVertex();
-
-        light_dir   = verts.v2 - light.pos;
-        gl_Position = mtx_vp * vec4(light_dir, 0.0);
-        EmitVertex();
+    if (dot(normal, light_dir) <= 0) {
+        return;
     }
+
+    normal = cross(edges.e3, edges.e1);
+
+    if (dot(normal, light_dir) <= 0) {
+        vec3 vtx_start = verts.v0;
+        vec3 vtx_end   = verts.v2;
+        EmitQuad(light, vtx_start, vtx_end, mtx_vp);
+    }
+
+    normal    = cross(edges.e4, edges.e5);
+    light_dir = light.pos - verts.v2;
+
+    if (dot(normal, light_dir) <= 0) {
+        vec3 vtx_start = verts.v2;
+        vec3 vtx_end   = verts.v4;
+        EmitQuad(light, vtx_start, vtx_end, mtx_vp);
+    }
+
+    normal    = cross(edges.e2, edges.e6);
+    light_dir = light.pos - verts.v4;
+
+    if (dot(normal, light_dir) <= 0) {
+        vec3 vtx_start = verts.v4;
+        vec3 vtx_end   = verts.v0;
+        EmitQuad(light, vtx_start, vtx_end, mtx_vp);
+    }
+
+    // render the front cap
+    light_dir   = normalize(verts.v0 - light.pos);
+    gl_Position = mtx_vp * vec4((verts.v0 + light_dir * EPSILON), 1.0);
+    EmitVertex();
+
+    light_dir   = normalize(verts.v2 - light.pos);
+    gl_Position = mtx_vp * vec4((verts.v2 + light_dir * EPSILON), 1.0);
+    EmitVertex();
+
+    light_dir   = normalize(verts.v4 - light.pos);
+    gl_Position = mtx_vp * vec4((verts.v4 + light_dir * EPSILON), 1.0);
+    EmitVertex();
+    EndPrimitive();
+
+    // render the back cap
+    light_dir   = verts.v0 - light.pos;
+    gl_Position = mtx_vp * vec4(light_dir, 0.0);
+    EmitVertex();
+
+    light_dir   = verts.v4 - light.pos;
+    gl_Position = mtx_vp * vec4(light_dir, 0.0);
+    EmitVertex();
+
+    light_dir   = verts.v2 - light.pos;
+    gl_Position = mtx_vp * vec4(light_dir, 0.0);
+    EmitVertex();
 }
 
 void EmitTri(SunLight light, vec3 start_vertex, vec3 end_vertex, mat4 mtx_vp)

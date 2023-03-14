@@ -8,25 +8,25 @@
 * Blinn-Phong shading
 * Point lights, directional lights, and spot lights
 * Real-time shadow volumes (stencil shadows) for all light types via a geometry shader
+* MSAA + AF
+* Skyboxes
 
 ## TODO:
 * Shadow optimizations
 * Normal maps
 * HDR + tonemapping
-* Anti-aliasing (MSAA)
-* Anistropic filtering
-* Skyboxes
 * Cubemap reflections
 * Bloom
 * Animations
 * Particle effects
-* Depth fog
+* Fog
 * UI
 * Linux support (currently only tested on Windows)
 
 ## Might be implemented eventually:
 * SSAO
 * SMAA
+* DOF
 * Soft stencil shadows (probably requires TAA or some form of temporal accumulation)
 * Shadow maps
 * Planar shadows
