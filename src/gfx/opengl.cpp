@@ -46,8 +46,8 @@ Shader CompileShader(GLenum shader_type, const char* src, i32 len)
 /* --- Texture2D --- */
 Texture2D::Texture2D(const std::string& path)
 {
-    // TODO: some of these should be methods like tex.SetParameter, tex.GenerateMipmap, etc. (I think, maybe they can't
-    // be changed after loading)
+    // TODO: some of these should be methods like tex.SetParameter, tex.GenerateMipmap, etc. (I
+    // think, maybe they can't be changed after loading)
     this->Reserve();
     this->Bind();
 
@@ -56,7 +56,8 @@ Texture2D::Texture2D(const std::string& path)
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 
-    // TODO: this should be a configureable setting, also we shouldn't grab the value every time we load a texture
+    // TODO: this should be a configureable setting, also we shouldn't grab the value every time we
+    // load a texture
     GLfloat max_anistropy;
     GL(glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &max_anistropy));
     GLfloat anistropy = glm::clamp(16.0f, 1.0f, max_anistropy);
@@ -81,7 +82,16 @@ Texture2D::Texture2D(const std::string& path)
         internal_fmt = (num_channels == 3) ? GL_RGB8 : GL_RGBA8;
     }
 
-    GL(glTexImage2D(GL_TEXTURE_2D, 0, internal_fmt, width, height, 0, color_fmt, GL_UNSIGNED_BYTE, image_data));
+    GL(glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        internal_fmt,
+        width,
+        height,
+        0,
+        color_fmt,
+        GL_UNSIGNED_BYTE,
+        image_data));
     GL(glGenerateMipmap(GL_TEXTURE_2D));
 
     stbi_image_free(image_data);
@@ -99,7 +109,11 @@ Texture2D::Texture2D(const glm::vec4& color)
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 
-    const u8 buf[4] = {(u8)(color.r * 255.0f), (u8)(color.g * 255.0f), (u8)(color.b * 255.0f), (u8)(color.a * 255.0f)};
+    const u8 buf[4]
+        = {(u8)(color.r * 255.0f),
+           (u8)(color.g * 255.0f),
+           (u8)(color.b * 255.0f),
+           (u8)(color.a * 255.0f)};
 
     GL(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf));
 
@@ -118,12 +132,55 @@ void Texture2D::Unbind() const
 
 void Texture2D::Reserve()
 {
+    if (this->handle != 0) {
+        return;
+    }
+
     GL(glGenTextures(1, &this->handle));
 }
 
 void Texture2D::Delete()
 {
+    if (this->handle == 0) {
+        return;
+    }
+
     GL(glDeleteTextures(1, &this->handle));
+    this->handle = 0;
+}
+
+/* --- TextureRT --- */
+void TextureRT::Bind() const
+{
+    ASSERT(this->handle != 0);
+    GL(glBindTexture(GL_TEXTURE_2D, this->handle));
+}
+
+void TextureRT::Unbind() const
+{
+    ASSERT(this->handle != 0);
+    GL(glBindTexture(GL_TEXTURE_2D, 0));
+}
+
+void TextureRT::Reserve()
+{
+    ASSERT(this->handle == 0);
+    GL(glGenTextures(1, &this->handle));
+}
+
+void TextureRT::Delete()
+{
+    ASSERT(this->handle != 0);
+    GL(glDeleteTextures(1, &this->handle));
+}
+
+void TextureRT::Setup(GLenum format, GLsizei width, GLsizei height)
+{
+    ASSERT(this->handle != 0);
+    this->Bind();
+    GL(glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr));
+    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 }
 
 /* --- TextureCubemap --- */
@@ -172,12 +229,21 @@ void TextureCubemap::Bind() const
 
 void TextureCubemap::Reserve()
 {
+    if (this->handle != 0) {
+        return;
+    }
+
     GL(glGenTextures(1, &this->handle));
 }
 
 void TextureCubemap::Delete()
 {
+    if (this->handle == 0) {
+        return;
+    }
+
     GL(glDeleteTextures(1, &this->handle));
+    this->handle = 0;
 }
 
 // Uniform
@@ -220,7 +286,12 @@ void VAO::Unbind() const
 // TODO: could be templated to infer the appropriate enum type
 // TODO: maybe there's a better way to wrap this in general
 // TODO: do we need access to the normalization argument?
-void VAO::SetAttribute(GLuint index, GLint components, GLenum type, GLsizei stride, uintptr_t offset)
+void VAO::SetAttribute(
+    GLuint    index,
+    GLint     components,
+    GLenum    type,
+    GLsizei   stride,
+    uintptr_t offset)
 {
     ASSERT(1 <= components && components <= 4);
 
@@ -322,6 +393,7 @@ void UBO::Delete()
     }
 
     GL(glDeleteBuffers(1, &this->handle));
+    this->handle = 0;
 }
 
 void UBO::Bind() const
@@ -344,4 +416,76 @@ void UBO::SubData(size_t offset, size_t size, const void* data) const
 void UBO::BindSlot(GLuint index) const
 {
     GL(glBindBufferBase(GL_UNIFORM_BUFFER, index, this->handle));
+}
+
+/* --- RBO --- */
+void RBO::Reserve()
+{
+    ASSERT(this->handle == 0);
+    GL(glGenRenderbuffers(1, &this->handle));
+}
+
+void RBO::Delete()
+{
+    ASSERT(this->handle != 0);
+    GL(glDeleteRenderbuffers(1, &this->handle));
+    this->handle = 0;
+}
+
+void RBO::Bind() const
+{
+    ASSERT(this->handle != 0);
+    GL(glBindRenderbuffer(GL_RENDERBUFFER, this->handle));
+}
+
+void RBO::Unbind() const
+{
+    ASSERT(this->handle != 0);
+    GL(glBindRenderbuffer(GL_RENDERBUFFER, 0));
+}
+
+void RBO::CreateStorage(GLenum internal_format, GLsizei width, GLsizei height)
+{
+    ASSERT(this->handle != 0);
+    this->Bind();
+    GL(glRenderbufferStorage(GL_RENDERBUFFER, internal_format, width, height));
+}
+
+/* --- FBO --- */
+void FBO::Reserve()
+{
+    ASSERT(this->handle == 0);
+    GL(glGenFramebuffers(1, &this->handle));
+}
+
+void FBO::Delete()
+{
+    ASSERT(this->handle != 0);
+    GL(glDeleteFramebuffers(1, &this->handle));
+}
+
+void FBO::Bind() const
+{
+    ASSERT(this->handle != 0);
+    GL(glBindFramebuffer(GL_FRAMEBUFFER, this->handle));
+}
+
+void FBO::Unbind() const
+{
+    ASSERT(this->handle != 0);
+    GL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
+}
+
+void FBO::Attach(RBO rbo, GLenum attachment) const
+{
+    ASSERT(this->handle != 0);
+    this->Bind();
+    GL(glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, rbo.handle));
+}
+
+void FBO::Attach(TextureRT tex_rt, GLenum attachment) const
+{
+    ASSERT(this->handle != 0);
+    this->Bind();
+    GL(glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, tex_rt.handle, 0));
 }

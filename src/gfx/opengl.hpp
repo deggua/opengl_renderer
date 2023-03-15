@@ -11,6 +11,12 @@
 
 #include "common.hpp"
 
+// TODO: I think the CRTP might be suitable for 'bindable' objects
+// TODO: we should convert most of the GLenum taking funcs to take a proper enum class
+// TODO: need to think more carefully about const semantics for member functions, ones that modify
+// internal state should probably be non-const, bind/unbind are OK
+// TODO: convert checks on Bind/Unbind to asserts
+
 template<typename T>
 struct Handle {
     T handle = 0;
@@ -47,12 +53,23 @@ struct Texture2D : Handle<GLuint> {
     void Delete();
 };
 
+struct TextureRT : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
+
+    void Bind() const;
+    void Unbind() const;
+    void Reserve();
+    void Delete();
+    void Setup(GLenum format, GLsizei width, GLsizei height);
+};
+
 struct TextureCubemap : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
     TextureCubemap(const std::array<std::string, 6>& faces);
 
     void Bind() const;
+    void Unbind() const;
     void Reserve();
     void Delete();
 };
@@ -128,7 +145,9 @@ struct ShaderProgram : Handle<GLuint> {
             GL(glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value)));
         } else {
             // TODO: is there a better way to do this?
-            static_assert(!std::is_same_v<T, T>, "No associated OpenGL function for templated type T");
+            static_assert(
+                !std::is_same_v<T, T>,
+                "No associated OpenGL function for templated type T");
         }
     }
 };
@@ -140,7 +159,9 @@ struct VAO : Handle<GLuint> {
     void Delete();
     void Bind() const;
     void Unbind() const;
-    void SetAttribute(GLuint index, GLint components, GLenum type, GLsizei stride, uintptr_t offset);
+
+    void
+    SetAttribute(GLuint index, GLint components, GLenum type, GLsizei stride, uintptr_t offset);
 };
 
 struct VBO : Handle<GLuint> {
@@ -150,6 +171,7 @@ struct VBO : Handle<GLuint> {
     void Delete();
     void Bind() const;
     void Unbind() const;
+
     void LoadData(size_t size, const void* data, GLenum usage) const;
 };
 
@@ -160,6 +182,7 @@ struct EBO : Handle<GLuint> {
     void Delete();
     void Bind() const;
     void Unbind() const;
+
     void LoadData(size_t size, const void* data, GLenum usage) const;
 };
 
@@ -170,11 +193,39 @@ struct UBO : Handle<GLuint> {
     void Delete();
     void Bind() const;
     void Unbind() const;
+
     void SubData(size_t offset, size_t size, const void* data) const;
     void BindSlot(GLuint index) const;
 };
 
+struct RBO : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
+
+    void Reserve();
+    void Delete();
+    void Bind() const;
+    void Unbind() const;
+
+    void CreateStorage(GLenum internal_format, GLsizei width, GLsizei height);
+};
+
+// TODO: multisample support
+struct FBO : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
+
+    void Reserve();
+    void Delete();
+    void Bind() const;
+    void Unbind() const;
+
+    // TODO: technically 2 possible targets (GL_READ_FRAMEBUFFER and GL_DRAW_FRAMEBUFFER =
+    // GL_FRAMEBUFFER)
+    void Attach(RBO rbo, GLenum attachment) const;
+    void Attach(TextureRT tex_rt, GLenum attachment) const;
+};
+
 Shader CompileShader(GLenum shader_type, GLsizei count, const GLchar** src, const GLint* len);
+
 Shader CompileShader(GLenum shader_type, const char* src, i32 len);
 
 template<class... Ts, class = std::enable_if_t<std::conjunction_v<std::is_same<Shader, Ts>...>>>

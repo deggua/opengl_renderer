@@ -3,9 +3,9 @@ out vec4 fo_color;
 
 in vec3 vo_vtx_texcoords;
 
-uniform samplerCube skybox;
+uniform samplerCube g_skybox;
 
 void main()
 {
-    fo_color = texture(skybox, vo_vtx_texcoords);
+    fo_color = texture(g_skybox, vo_vtx_texcoords);
 }

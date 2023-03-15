@@ -21,9 +21,11 @@
 #include "gfx/renderer.hpp"
 #include "math/random.hpp"
 
-PointLight point_light = PointLight().Position(0.0f, 0.0f, 0.0f).Color(1.0f, 1.0f, 1.0f).Intensity(10.0f);
-SunLight   sun_light   = SunLight().Direction({-1.0f, -1.0f, 0.0f}).Color(1.0f, 1.0f, 1.0f).Intensity(1.0f);
-SpotLight  spot_light  = SpotLight()
+PointLight point_light
+    = PointLight().Position(0.0f, 0.0f, 0.0f).Color(1.0f, 1.0f, 1.0f).Intensity(10.0f);
+SunLight sun_light
+    = SunLight().Direction({-1.0f, -1.0f, 0.0f}).Color(1.0f, 1.0f, 1.0f).Intensity(1.0f);
+SpotLight spot_light = SpotLight()
                            .Direction({0.0f, -1.0f, 0.0f})
                            .Position(0.0f, 0.0f, 0.0f)
                            .Color(1.0f, 1.0f, 1.0f)
@@ -181,12 +183,12 @@ void RenderInit(GLFWwindow* window)
 
     Random_Seed_HighEntropy();
 
-    GL(glEnable(GL_MULTISAMPLE));
+    // GL(glEnable(GL_MULTISAMPLE));
     // GL(glEnable(GL_FRAMEBUFFER_SRGB));
 }
 
-// TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but apparently
-// using discard (for the alpha test) effectively disables early-z
+// TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but
+// apparently using discard (for the alpha test) effectively disables early-z
 
 void RenderLoop(GLFWwindow* window)
 {
@@ -226,15 +228,18 @@ void RenderLoop(GLFWwindow* window)
         rt.ViewPosition(g_Camera.pos);
         rt.ViewMatrix(g_Camera.ViewMatrix());
 
-        // TODO: it's also more efficient to render objects with the same texture/mesh together as well
-        // not sure how that could be tracked
+        // TODO: it's also more efficient to render objects with the same texture/mesh together as
+        // well not sure how that could be tracked
 
         rt.RenderPrepass();
-        rt.RenderLighting(ambient_light, objs);
-        rt.RenderLighting(sun_dupe, objs);
-        // rt.RenderLighting(pt_dupe, objs);
-        rt.RenderLighting(sp_dupe, objs);
-        rt.RenderSkybox(sky);
+        {
+            rt.RenderLighting(ambient_light, objs);
+            rt.RenderLighting(sun_dupe, objs);
+            // rt.RenderLighting(pt_dupe, objs);
+            rt.RenderLighting(sp_dupe, objs);
+            rt.RenderSkybox(sky);
+        }
+        rt.RenderScreen();
 
         glfwSwapBuffers(window);
         glfwPollEvents();

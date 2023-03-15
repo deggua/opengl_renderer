@@ -15,6 +15,8 @@ SHADER_FILE(ShadowVolume_FS);
 SHADER_FILE(ShadowVolume_GS);
 SHADER_FILE(Skybox_FS);
 SHADER_FILE(Skybox_VS);
+SHADER_FILE(Postprocess_FS);
+SHADER_FILE(Postprocess_VS);
 
 // SHADER_FILE(VS_ShadowVolume);
 
@@ -507,6 +509,43 @@ void Skybox::Draw() const
     GL(glDrawArrays(GL_TRIANGLES, 0, lengthof(skybox_vertices)));
 }
 
+static const glm::vec2 fullscreen_quad[] = {
+  // positions   // texCoords
+    {-1.0f,  1.0f},
+    { 0.0f,  1.0f},
+    {-1.0f, -1.0f},
+    { 0.0f,  0.0f},
+    { 1.0f, -1.0f},
+    { 1.0f,  0.0f},
+
+    {-1.0f,  1.0f},
+    { 0.0f,  1.0f},
+    { 1.0f, -1.0f},
+    { 1.0f,  0.0f},
+    { 1.0f,  1.0f},
+    { 1.0f,  1.0f}
+};
+
+FullscreenQuad::FullscreenQuad()
+{
+    this->vao.Reserve();
+    this->vbo.Reserve();
+
+    this->vbo.LoadData(sizeof(fullscreen_quad), &fullscreen_quad, GL_STATIC_DRAW);
+
+    this->vbo.Bind();
+    this->vao.SetAttribute(0, 2, GL_FLOAT, 2 * sizeof(glm::vec2), 0);
+    this->vao.SetAttribute(1, 2, GL_FLOAT, 2 * sizeof(glm::vec2), sizeof(glm::vec2));
+
+    LOG_INFO("FullscreenQuad constructed");
+}
+
+void FullscreenQuad::Draw() const
+{
+    this->vao.Bind();
+    GL(glDrawArrays(GL_TRIANGLES, 0, lengthof(fullscreen_quad) / 2));
+}
+
 // Renderer
 Renderer::Renderer(bool opengl_logging)
 {
@@ -514,18 +553,48 @@ Renderer::Renderer(bool opengl_logging)
 
     Shader fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
 
-    Shader fs_ambient = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Ambient, Lighting_FS.src, Lighting_FS.len);
-    Shader fs_point   = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Point, Lighting_FS.src, Lighting_FS.len);
-    Shader fs_spot    = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Spot, Lighting_FS.src, Lighting_FS.len);
-    Shader fs_sun     = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Sun, Lighting_FS.src, Lighting_FS.len);
+    Shader fs_ambient = CompileLightShader(
+        GL_FRAGMENT_SHADER,
+        LightType::Ambient,
+        Lighting_FS.src,
+        Lighting_FS.len);
 
-    Shader gs_point
-        = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Point, ShadowVolume_GS.src, ShadowVolume_GS.len);
-    Shader gs_spot = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Spot, ShadowVolume_GS.src, ShadowVolume_GS.len);
-    Shader gs_sun  = CompileLightShader(GL_GEOMETRY_SHADER, LightType::Sun, ShadowVolume_GS.src, ShadowVolume_GS.len);
+    Shader fs_point = CompileLightShader(
+        GL_FRAGMENT_SHADER,
+        LightType::Point,
+        Lighting_FS.src,
+        Lighting_FS.len);
+
+    Shader fs_spot
+        = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Spot, Lighting_FS.src, Lighting_FS.len);
+
+    Shader fs_sun
+        = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Sun, Lighting_FS.src, Lighting_FS.len);
+
+    Shader gs_point = CompileLightShader(
+        GL_GEOMETRY_SHADER,
+        LightType::Point,
+        ShadowVolume_GS.src,
+        ShadowVolume_GS.len);
+
+    Shader gs_spot = CompileLightShader(
+        GL_GEOMETRY_SHADER,
+        LightType::Spot,
+        ShadowVolume_GS.src,
+        ShadowVolume_GS.len);
+
+    Shader gs_sun = CompileLightShader(
+        GL_GEOMETRY_SHADER,
+        LightType::Sun,
+        ShadowVolume_GS.src,
+        ShadowVolume_GS.len);
 
     Shader vs_skybox = CompileShader(GL_VERTEX_SHADER, Skybox_VS.src, Skybox_VS.len);
     Shader fs_skybox = CompileShader(GL_FRAGMENT_SHADER, Skybox_FS.src, Skybox_FS.len);
+
+    Shader vs_postprocess = CompileShader(GL_VERTEX_SHADER, Postprocess_VS.src, Postprocess_VS.len);
+    Shader fs_postprocess
+        = CompileShader(GL_FRAGMENT_SHADER, Postprocess_FS.src, Postprocess_FS.len);
 
     this->dl_shader[(usize)ShaderType::Ambient] = LinkShaders(vs_common, fs_ambient);
     this->dl_shader[(usize)ShaderType::Point]   = LinkShaders(vs_common, fs_point);
@@ -537,10 +606,11 @@ Renderer::Renderer(bool opengl_logging)
     this->sv_shader[(usize)ShaderType::Sun]   = LinkShaders(vs_common, gs_sun, fs_shadow);
 
     this->sky_shader = LinkShaders(vs_skybox, fs_skybox);
+    this->pp_shader  = LinkShaders(vs_postprocess, fs_postprocess);
 
+    // setup texture indices in shaders that use them
     // TODO: might need different handling if more textures of each type are enabled
     // TODO: using a UBO might be better but we only pay this cost once at startup
-    // setup texture indices in shaders that use them
     for (ShaderProgram& sp : this->dl_shader) {
         sp.UseProgram();
         sp.SetUniform("g_material.diffuse", 0);
@@ -549,7 +619,22 @@ Renderer::Renderer(bool opengl_logging)
     }
 
     this->sky_shader.UseProgram();
-    this->sky_shader.SetUniform("skybox", 0);
+    this->sky_shader.SetUniform("g_skybox", 0);
+
+    this->pp_shader.UseProgram();
+    this->pp_shader.SetUniform("g_screen", 0);
+
+    // setup internal render target
+    this->rt_depth_stencil.Reserve();
+    this->rt_depth_stencil.CreateStorage(GL_DEPTH24_STENCIL8, this->res_width, this->res_height);
+
+    this->rt_color.Reserve();
+    this->rt_color.Setup(GL_RGB8, this->res_width, this->res_height);
+
+    this->rt_frame.Reserve();
+    this->rt_frame.Attach(this->rt_depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
+    this->rt_frame.Attach(this->rt_color, GL_COLOR_ATTACHMENT0);
+    ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
     // setup the shared UBO
     this->shared_data.Reserve(SHARED_DATA_SIZE);
@@ -561,7 +646,13 @@ Renderer::Renderer(bool opengl_logging)
         GL(glEnable(GL_DEBUG_OUTPUT));
         GL(glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS));
         GL(glDebugMessageCallback(OpenGL_Debug_Callback, nullptr));
-        GL(glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, nullptr, GL_FALSE));
+        GL(glDebugMessageControl(
+            GL_DONT_CARE,
+            GL_DONT_CARE,
+            GL_DEBUG_SEVERITY_NOTIFICATION,
+            0,
+            nullptr,
+            GL_FALSE));
     }
 }
 
@@ -573,6 +664,10 @@ Renderer& Renderer::Resolution(u32 width, u32 height)
 
     this->res_width  = width;
     this->res_height = height;
+
+    this->rt_depth_stencil.CreateStorage(GL_DEPTH24_STENCIL8, this->res_width, this->res_height);
+    this->rt_color.Setup(GL_RGB8, this->res_width, this->res_height);
+
     GL(glViewport(0, 0, width, height));
 
     return *this;
@@ -604,9 +699,6 @@ Renderer& Renderer::ClearColor(f32 red, f32 green, f32 blue)
 
 void Renderer::RenderPrepass()
 {
-    // clear the screen color
-    GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
-
     // cache the VP matrix for this render pass
     f32       aspect   = (f32)res_width / (f32)res_height;
     glm::mat4 mtx_proj = glm::perspective(glm::radians(this->fov), aspect, CLIP_NEAR, CLIP_FAR);
@@ -618,6 +710,10 @@ void Renderer::RenderPrepass()
         this->pos_view,
     };
     this->shared_data.SubData(0, SHARED_DATA_SIZE, &tmp);
+
+    // bind the internal frame target and clear the screen
+    this->rt_frame.Bind();
+    GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 }
 
 // TODO: there should be a better way to organize these, they're very similar
@@ -909,6 +1005,8 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
 
 void Renderer::RenderSkybox(const Skybox& sky)
 {
+    GL(glDisable(GL_BLEND));
+    GL(glDisable(GL_STENCIL_TEST));
     GL(glDepthFunc(GL_LEQUAL));
 
     f32       aspect   = (f32)res_width / (f32)res_height;
@@ -920,4 +1018,21 @@ void Renderer::RenderSkybox(const Skybox& sky)
     sp.SetUniform("g_mtx_vp_fixed", vp_fixed);
 
     sky.Draw();
+}
+
+void Renderer::RenderScreen()
+{
+    GL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
+    GL(glDisable(GL_DEPTH_TEST));
+    GL(glClearColor(1.0f, 1.0f, 1.0f, 1.0f));
+    GL(glDisable(GL_BLEND));
+    GL(glDisable(GL_STENCIL_TEST));
+    GL(glClear(GL_COLOR_BUFFER_BIT));
+
+    ShaderProgram& sp = this->pp_shader;
+    sp.UseProgram();
+    sp.SetUniform("g_gamma", 2.2f);
+
+    this->rt_color.Bind();
+    this->rt_quad.Draw();
 }

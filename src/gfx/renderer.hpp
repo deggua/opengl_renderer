@@ -143,6 +143,14 @@ struct Skybox {
     void Draw() const;
 };
 
+struct FullscreenQuad {
+    VAO vao;
+    VBO vbo;
+
+    FullscreenQuad();
+    void Draw() const;
+};
+
 struct Renderer {
     enum class ShaderType {
         None  = -1,
@@ -177,6 +185,7 @@ struct Renderer {
     ShaderProgram dl_shader[NUM_LIGHT_SHADERS]  = {};
     ShaderProgram sv_shader[NUM_SHADOW_SHADERS] = {};
     ShaderProgram sky_shader;
+    ShaderProgram pp_shader;
 
     glm::mat4 mtx_view;
     glm::vec3 pos_view;
@@ -187,6 +196,11 @@ struct Renderer {
     f32 fov = 90.0f;
 
     UBO shared_data;
+
+    FBO            rt_frame;
+    RBO            rt_depth_stencil;
+    TextureRT      rt_color;
+    FullscreenQuad rt_quad; // TODO: is this default constructed?
 
     Renderer(bool opengl_logging = false);
 
@@ -204,4 +218,5 @@ struct Renderer {
     void RenderLighting(const SpotLight& light, const std::vector<Object>& objs);
     void RenderLighting(const SunLight& light, const std::vector<Object>& objs);
     void RenderSkybox(const Skybox& sky);
+    void RenderScreen();
 };
