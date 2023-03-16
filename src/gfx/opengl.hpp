@@ -206,7 +206,7 @@ struct RBO : Handle<GLuint> {
     void Bind() const;
     void Unbind() const;
 
-    void CreateStorage(GLenum internal_format, GLsizei width, GLsizei height);
+    void CreateStorage(GLenum internal_format, GLsizei samples, GLsizei width, GLsizei height);
 };
 
 // TODO: multisample support

@@ -197,10 +197,19 @@ struct Renderer {
 
     UBO shared_data;
 
-    FBO            rt_frame;
-    RBO            rt_depth_stencil;
-    TextureRT      rt_color;
-    FullscreenQuad rt_quad; // TODO: is this default constructed?
+    struct {
+        FBO fbo;
+        RBO depth_stencil;
+        RBO color;
+    } msaa;
+
+    struct {
+        FBO       fbo;
+        RBO       depth_stencil;
+        TextureRT color;
+    } post;
+
+    FullscreenQuad rt_quad;
 
     Renderer(bool opengl_logging = false);
 

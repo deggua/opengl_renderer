@@ -183,8 +183,7 @@ void RenderInit(GLFWwindow* window)
 
     Random_Seed_HighEntropy();
 
-    // GL(glEnable(GL_MULTISAMPLE));
-    // GL(glEnable(GL_FRAMEBUFFER_SRGB));
+    GL(glEnable(GL_MULTISAMPLE));
 }
 
 // TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but

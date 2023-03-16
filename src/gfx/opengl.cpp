@@ -444,11 +444,11 @@ void RBO::Unbind() const
     GL(glBindRenderbuffer(GL_RENDERBUFFER, 0));
 }
 
-void RBO::CreateStorage(GLenum internal_format, GLsizei width, GLsizei height)
+void RBO::CreateStorage(GLenum internal_format, GLsizei samples, GLsizei width, GLsizei height)
 {
     ASSERT(this->handle != 0);
     this->Bind();
-    GL(glRenderbufferStorage(GL_RENDERBUFFER, internal_format, width, height));
+    GL(glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, internal_format, width, height));
 }
 
 /* --- FBO --- */

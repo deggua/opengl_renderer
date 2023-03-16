@@ -624,16 +624,30 @@ Renderer::Renderer(bool opengl_logging)
     this->pp_shader.UseProgram();
     this->pp_shader.SetUniform("g_screen", 0);
 
-    // setup internal render target
-    this->rt_depth_stencil.Reserve();
-    this->rt_depth_stencil.CreateStorage(GL_DEPTH24_STENCIL8, this->res_width, this->res_height);
+    // setup internal render target for MSAA
+    this->msaa.fbo.Reserve();
+    this->msaa.depth_stencil.Reserve();
+    this->msaa.color.Reserve();
 
-    this->rt_color.Reserve();
-    this->rt_color.Setup(GL_RGB8, this->res_width, this->res_height);
+    this->msaa.depth_stencil
+        .CreateStorage(GL_DEPTH24_STENCIL8, 4, this->res_width, this->res_height);
+    this->msaa.color.CreateStorage(GL_RGB8, 4, this->res_width, this->res_height);
 
-    this->rt_frame.Reserve();
-    this->rt_frame.Attach(this->rt_depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
-    this->rt_frame.Attach(this->rt_color, GL_COLOR_ATTACHMENT0);
+    this->msaa.fbo.Attach(this->msaa.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
+    this->msaa.fbo.Attach(this->msaa.color, GL_COLOR_ATTACHMENT0);
+    ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+
+    // setup internal render target for postprocessing
+    this->post.fbo.Reserve();
+    this->post.depth_stencil.Reserve();
+    this->post.color.Reserve();
+
+    this->post.depth_stencil
+        .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
+    this->post.color.Setup(GL_RGB8, this->res_width, this->res_height);
+
+    this->post.fbo.Attach(this->post.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
+    this->post.fbo.Attach(this->post.color, GL_COLOR_ATTACHMENT0);
     ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
     // setup the shared UBO
@@ -665,8 +679,13 @@ Renderer& Renderer::Resolution(u32 width, u32 height)
     this->res_width  = width;
     this->res_height = height;
 
-    this->rt_depth_stencil.CreateStorage(GL_DEPTH24_STENCIL8, this->res_width, this->res_height);
-    this->rt_color.Setup(GL_RGB8, this->res_width, this->res_height);
+    this->msaa.depth_stencil
+        .CreateStorage(GL_DEPTH24_STENCIL8, 4, this->res_width, this->res_height); // TODO: MSAA
+    this->msaa.color.CreateStorage(GL_RGB8, 4, this->res_width, this->res_height); // TODO: MSAA
+
+    this->post.depth_stencil
+        .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
+    this->post.color.Setup(GL_RGB8, this->res_width, this->res_height);
 
     GL(glViewport(0, 0, width, height));
 
@@ -712,7 +731,7 @@ void Renderer::RenderPrepass()
     this->shared_data.SubData(0, SHARED_DATA_SIZE, &tmp);
 
     // bind the internal frame target and clear the screen
-    this->rt_frame.Bind();
+    this->msaa.fbo.Bind();
     GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 }
 
@@ -1022,6 +1041,22 @@ void Renderer::RenderSkybox(const Skybox& sky)
 
 void Renderer::RenderScreen()
 {
+    // blit the MSAA FBO to the post FBO
+    GL(glBindFramebuffer(GL_READ_FRAMEBUFFER, this->msaa.fbo.handle));
+    GL(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, this->post.fbo.handle));
+    GL(glBlitFramebuffer(
+        0,
+        0,
+        this->res_width,
+        this->res_height,
+        0,
+        0,
+        this->res_width,
+        this->res_height,
+        GL_COLOR_BUFFER_BIT,
+        GL_NEAREST));
+
+    // now render to the default framebuffer using the post FBO's texture
     GL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
     GL(glDisable(GL_DEPTH_TEST));
     GL(glClearColor(1.0f, 1.0f, 1.0f, 1.0f));
@@ -1033,6 +1068,6 @@ void Renderer::RenderScreen()
     sp.UseProgram();
     sp.SetUniform("g_gamma", 2.2f);
 
-    this->rt_color.Bind();
+    this->post.color.Bind();
     this->rt_quad.Draw();
 }
