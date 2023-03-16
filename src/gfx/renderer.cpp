@@ -9,6 +9,9 @@
 #include "common.hpp"
 #include "gfx/opengl.hpp"
 
+// TODO: make this a proper configurable option
+#define MSAA_SAMPLES 4
+
 SHADER_FILE(Common_VS);
 SHADER_FILE(Lighting_FS);
 SHADER_FILE(ShadowVolume_FS);
@@ -630,8 +633,8 @@ Renderer::Renderer(bool opengl_logging)
     this->msaa.color.Reserve();
 
     this->msaa.depth_stencil
-        .CreateStorage(GL_DEPTH24_STENCIL8, 4, this->res_width, this->res_height);
-    this->msaa.color.CreateStorage(GL_RGB8, 4, this->res_width, this->res_height);
+        .CreateStorage(GL_DEPTH24_STENCIL8, MSAA_SAMPLES, this->res_width, this->res_height);
+    this->msaa.color.CreateStorage(GL_RGB16F, MSAA_SAMPLES, this->res_width, this->res_height);
 
     this->msaa.fbo.Attach(this->msaa.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
     this->msaa.fbo.Attach(this->msaa.color, GL_COLOR_ATTACHMENT0);
@@ -644,7 +647,7 @@ Renderer::Renderer(bool opengl_logging)
 
     this->post.depth_stencil
         .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
-    this->post.color.Setup(GL_RGB8, this->res_width, this->res_height);
+    this->post.color.Setup(GL_RGB16F, this->res_width, this->res_height);
 
     this->post.fbo.Attach(this->post.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
     this->post.fbo.Attach(this->post.color, GL_COLOR_ATTACHMENT0);
@@ -680,12 +683,12 @@ Renderer& Renderer::Resolution(u32 width, u32 height)
     this->res_height = height;
 
     this->msaa.depth_stencil
-        .CreateStorage(GL_DEPTH24_STENCIL8, 4, this->res_width, this->res_height); // TODO: MSAA
-    this->msaa.color.CreateStorage(GL_RGB8, 4, this->res_width, this->res_height); // TODO: MSAA
+        .CreateStorage(GL_DEPTH24_STENCIL8, MSAA_SAMPLES, this->res_width, this->res_height);
+    this->msaa.color.CreateStorage(GL_RGB16F, MSAA_SAMPLES, this->res_width, this->res_height);
 
     this->post.depth_stencil
         .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
-    this->post.color.Setup(GL_RGB8, this->res_width, this->res_height);
+    this->post.color.Setup(GL_RGB16F, this->res_width, this->res_height);
 
     GL(glViewport(0, 0, width, height));
 

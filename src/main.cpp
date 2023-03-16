@@ -235,7 +235,7 @@ void RenderLoop(GLFWwindow* window)
             rt.RenderLighting(ambient_light, objs);
             rt.RenderLighting(sun_dupe, objs);
             // rt.RenderLighting(pt_dupe, objs);
-            rt.RenderLighting(sp_dupe, objs);
+            // rt.RenderLighting(sp_dupe, objs);
             rt.RenderSkybox(sky);
         }
         rt.RenderScreen();

@@ -10,11 +10,11 @@
 * Real-time shadow volumes (stencil shadows) for all light types via a geometry shader
 * MSAA + AF
 * Skyboxes
+* HDR Tonemapping
 
 ## TODO:
 * Shadow optimizations
 * Normal maps
-* HDR + tonemapping
 * Cubemap reflections
 * Bloom
 * Animations
