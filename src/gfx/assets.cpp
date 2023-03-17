@@ -70,9 +70,12 @@ struct Face {
 
     bool operator==(const Face& rhs) const
     {
-        bool first  = this->idx[0] == rhs.idx[0] && this->idx[1] == rhs.idx[1] && this->idx[2] == rhs.idx[2];
-        bool second = this->idx[0] == rhs.idx[1] && this->idx[1] == rhs.idx[2] && this->idx[2] == rhs.idx[0];
-        bool third  = this->idx[0] == rhs.idx[2] && this->idx[1] == rhs.idx[0] && this->idx[2] == rhs.idx[1];
+        bool first = this->idx[0] == rhs.idx[0] && this->idx[1] == rhs.idx[1]
+                     && this->idx[2] == rhs.idx[2];
+        bool second = this->idx[0] == rhs.idx[1] && this->idx[1] == rhs.idx[2]
+                      && this->idx[2] == rhs.idx[0];
+        bool third = this->idx[0] == rhs.idx[2] && this->idx[1] == rhs.idx[0]
+                     && this->idx[2] == rhs.idx[1];
         return first || second || third;
     }
 
@@ -86,11 +89,13 @@ template<>
 struct std::hash<Face> {
     std::size_t operator()(const Face& face) const noexcept
     {
-        return std::hash<GLuint>{}(face.idx[0]) ^ std::hash<GLuint>{}(face.idx[1]) ^ std::hash<GLuint>{}(face.idx[2]);
+        return std::hash<GLuint>{}(face.idx[0]) ^ std::hash<GLuint>{}(face.idx[1])
+               ^ std::hash<GLuint>{}(face.idx[2]);
     }
 };
 
-static GLuint UniqueIndex(std::unordered_map<aiVector3D, GLuint>& vtx_map, const aiMesh& mesh, GLuint pot_index)
+static GLuint
+UniqueIndex(std::unordered_map<aiVector3D, GLuint>& vtx_map, const aiMesh& mesh, GLuint pot_index)
 {
     aiVector3D& vtx = mesh.mVertices[pot_index];
     return vtx_map.at(vtx);
@@ -110,8 +115,9 @@ static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
         }
     }
 
-    // even though we dedupe vertices, we might still add two identical faces because after we go through the map
-    // two faces with separate indices might map to identical or semi-identical faces, so we need to dedupe faces
+    // even though we dedupe vertices, we might still add two identical faces because after we go
+    // through the map two faces with separate indices might map to identical or semi-identical
+    // faces, so we need to dedupe faces
     for (usize ii = 0; ii < mesh.mNumFaces; ii++) {
         ASSERT(mesh.mFaces[ii].mNumIndices == 3);
         GLuint i0 = UniqueIndex(vtx_map, mesh, mesh.mFaces[ii].mIndices[0]);
@@ -119,8 +125,8 @@ static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
         GLuint i2 = UniqueIndex(vtx_map, mesh, mesh.mFaces[ii].mIndices[2]);
 
         Face face = Face(i0, i1, i2);
-        // TODO: this does sort of work, but it also means that flat geometry (e.g. a cape that has no volume) will
-        // not cast shadows, which sucks
+        // TODO: this does sort of work, but it also means that flat geometry (e.g. a cape that has
+        // no volume) will not cast shadows, which sucks
         // TODO: use find?
         if (unique_faces.contains(face.Mirror())) {
             unique_faces.erase(face.Mirror());
@@ -129,8 +135,8 @@ static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
         }
     }
 
-    // now we should be able to map edges to two unique vertices (so long as the original mesh doesn't have the edge
-    // case)
+    // now we should be able to map edges to two unique vertices (so long as the original mesh
+    // doesn't have the edge case)
     for (const Face& face : unique_faces) {
         for (usize ii = 0; ii < 3; ii++) {
             GLuint i0 = face.idx[ii];
@@ -177,12 +183,13 @@ static std::vector<GLuint> ComputeAdjacencyIndices(const aiMesh& mesh)
         bool i3_not_unique = (adj[3] == adj[0]) || (adj[3] == adj[2]) || (adj[3] == adj[4]);
         bool i5_not_unique = (adj[5] == adj[0]) || (adj[5] == adj[2]) || (adj[5] == adj[4]);
         if (i1_not_unique && i3_not_unique && i5_not_unique) {
-            // TODO: This is kind of a catch all for buggy geometry if the above didn't work, but it isn't great for a
-            // few reasons:
+            // TODO: This is kind of a catch all for buggy geometry if the above didn't work, but it
+            // isn't great for a few reasons:
             //  * Disables shadow geometry completely
             //  * Still creates an EBO and will lead to a draw call (not necessary)
-            // we could fix this by returning an std::optional<std::vector<GLuint>>, but we need a way for individual
-            // pieces of geometry to say they don't cast shadows as well as object groups
+            // we could fix this by returning an std::optional<std::vector<GLuint>>, but we need a
+            // way for individual pieces of geometry to say they don't cast shadows as well as
+            // object groups
             LOG_WARNING("Found single tri");
             return {};
         } else {
@@ -201,7 +208,10 @@ Geometry::Geometry(const aiMesh& mesh)
     std::vector<GLuint> visual_indices = {};
     for (size_t ii = 0; ii < mesh.mNumFaces; ii++) {
         aiFace face = mesh.mFaces[ii];
-        visual_indices.insert(visual_indices.end(), face.mIndices, face.mIndices + face.mNumIndices);
+        visual_indices.insert(
+            visual_indices.end(),
+            face.mIndices,
+            face.mIndices + face.mNumIndices);
     }
 
     // collect vertex positions, normals, tex coords
@@ -240,10 +250,16 @@ Geometry::Geometry(const aiMesh& mesh)
     this->vao_shadow.SetAttribute(2, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
 
     this->vao_visual.Bind();
-    this->ebo_visual.LoadData(visual_indices.size() * sizeof(GLuint), visual_indices.data(), GL_STATIC_DRAW);
+    this->ebo_visual.LoadData(
+        visual_indices.size() * sizeof(GLuint),
+        visual_indices.data(),
+        GL_STATIC_DRAW);
 
     this->vao_shadow.Bind();
-    this->ebo_shadow.LoadData(shadow_indices.size() * sizeof(GLuint), shadow_indices.data(), GL_STATIC_DRAW);
+    this->ebo_shadow.LoadData(
+        shadow_indices.size() * sizeof(GLuint),
+        shadow_indices.data(),
+        GL_STATIC_DRAW);
 
     this->len_visual = visual_indices.size();
     this->len_shadow = shadow_indices.size();
@@ -277,7 +293,7 @@ Material::Material()
 {
     this->diffuse  = TexturePool.Load(DefaultTexture_Diffuse);
     this->specular = TexturePool.Load(DefaultTexture_Specular);
-    this->gloss    = 0.0f;
+    this->gloss    = 1.0f;
 }
 
 Material::Material(const aiMaterial& material, std::string_view directory)
@@ -308,6 +324,7 @@ Material::Material(const aiMaterial& material, std::string_view directory)
 
     // set the gloss
     material.Get(AI_MATKEY_SHININESS, this->gloss);
+    ASSERT(this->gloss >= 1.0f);
 }
 
 void Material::Use(ShaderProgram& sp) const
@@ -322,7 +339,9 @@ void Material::Use(ShaderProgram& sp) const
 }
 
 /* --- Model --- */
-Model::Model(const Geometry& geometry, const Material& material) : geometry(geometry), material(material) {}
+Model::Model(const Geometry& geometry, const Material& material) :
+    geometry(geometry), material(material)
+{}
 
 void Model::DrawVisual(ShaderProgram& sp) const
 {
@@ -336,7 +355,8 @@ void Model::DrawShadow(ShaderProgram& sp) const
 }
 
 /* --- Object --- */
-static Model ProcessAssimpMesh(const aiScene& ai_scene, const aiMesh& ai_mesh, std::string_view directory)
+static Model
+ProcessAssimpMesh(const aiScene& ai_scene, const aiMesh& ai_mesh, std::string_view directory)
 {
     Geometry geometry = Geometry(ai_mesh);
     Material material;
@@ -353,8 +373,11 @@ static Model ProcessAssimpMesh(const aiScene& ai_scene, const aiMesh& ai_mesh, s
     return Model(geometry, material);
 }
 
-static void
-ProcessAssimpNode(std::vector<Model>& objs, const aiScene& scene, const aiNode& node, std::string_view directory)
+static void ProcessAssimpNode(
+    std::vector<Model>& objs,
+    const aiScene&      scene,
+    const aiNode&       node,
+    std::string_view    directory)
 {
     for (size_t ii = 0; ii < node.mNumMeshes; ii++) {
         aiMesh* mesh = scene.mMeshes[node.mMeshes[ii]];
@@ -371,7 +394,8 @@ Object::Object(std::string_view file_path)
     std::string fp = std::string(file_path);
 
     Assimp::Importer importer;
-    const aiScene*   scene = importer.ReadFile(fp.c_str(), aiProcess_Triangulate | aiProcess_GenNormals);
+    const aiScene*   scene
+        = importer.ReadFile(fp.c_str(), aiProcess_Triangulate | aiProcess_GenNormals);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         ABORT("Asset import failed for '%s'", fp.c_str());
@@ -459,7 +483,8 @@ glm::mat4 Object::WorldMatrix() const
     return mtx;
 }
 
-// TODO: having to recompute the world matrix is annoying, but probably gets optimized away if both are called adjacent
+// TODO: having to recompute the world matrix is annoying, but probably gets optimized away if both
+// are called adjacent
 glm::mat3 Object::NormalMatrix() const
 {
     glm::mat4 world_mtx  = this->WorldMatrix();

@@ -19,8 +19,8 @@ constexpr const char* DefaultTexture_Normal   = ".NO_NORMAL";
 
 extern AssetCache<Texture2D> TexturePool;
 
-// TODO: in order to have an 'ObjectPool' we need a separation between 'Objects' (basically mesh + texture)
-// and 'GameObjects' instances of an object at particular location in the world
+// TODO: in order to have an 'ObjectPool' we need a separation between 'Objects' (basically mesh +
+// texture) and 'GameObjects' instances of an object at particular location in the world
 
 struct Material {
     Texture2D* diffuse;

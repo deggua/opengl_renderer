@@ -964,9 +964,6 @@ void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& 
         GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
 
         // offset shadows in Z
-        // TODO: this kind of works but introduces some slight visual glitches
-        // better off just avoiding placing lights at certain angles to avoid Z fighting
-        // or maybe there's a better solution
         GL(glEnable(GL_POLYGON_OFFSET_FILL));
         GL(glPolygonOffset(SHADOW_OFFSET_FACTOR, SHADOW_OFFSET_UNITS));
 

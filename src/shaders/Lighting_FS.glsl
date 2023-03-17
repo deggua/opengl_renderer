@@ -75,6 +75,8 @@ uniform SpotLight g_light_source;
 
 #endif
 
+// TODO: make texture samples vec3
+
 // Phong lighting model
 vec4 ComputeAmbientLight(vec3 light_color, vec4 obj_diffuse)
 {
@@ -95,11 +97,23 @@ vec4 ComputeSpecularLight(
     vec3  light_dir,
     vec3  view_dir)
 {
+    const float energy_factor = 24.0 / (8.0 * PI);
+
+    // handles back facing light dir, we attenuate by the dot product to avoid the discontinuity
+    float cos_term = dot(frag_norm, light_dir);
+    if (cos_term <= 0.0) {
+        return vec4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    // handles back facing view dir
+    if (dot(frag_norm, view_dir) <= 0.0) {
+        return vec4(0.0, 0.0, 0.0, 1.0);
+    }
+
     // gloss compensation for Blinn-Phong
-    const float energy_factor      = 24.0 / (8.0 * PI);
-    vec3        halfway_dir        = normalize(light_dir + view_dir);
-    float       specular_intensity = pow(max(dot(frag_norm, halfway_dir), 0.0), obj_gloss);
-    return energy_factor * vec4(light_color, 1.0) * obj_specular * specular_intensity;
+    vec3  halfway_dir        = normalize(light_dir + view_dir);
+    float specular_intensity = pow(max(dot(frag_norm, halfway_dir), 0.0), obj_gloss);
+    return energy_factor * vec4(light_color, 1.0) * obj_specular * specular_intensity * cos_term;
 }
 
 // Helper functions
@@ -144,9 +158,14 @@ vec4 ComputeLighting(
     float dist_falloff = ComputeLightFalloff(light.pos, frag_pos);
 
     // specular + diffuse light contribution
-    vec4 diffuse_light = ComputeDiffuseLight(light.color, obj_diffuse, frag_norm, frag2light_dir);
-    vec4 specular_light
-        = ComputeSpecularLight(light.color, obj_specular, obj_gloss, frag_norm, frag2light_dir, frag2view_dir);
+    vec4 diffuse_light  = ComputeDiffuseLight(light.color, obj_diffuse, frag_norm, frag2light_dir);
+    vec4 specular_light = ComputeSpecularLight(
+        light.color,
+        obj_specular,
+        obj_gloss,
+        frag_norm,
+        frag2light_dir,
+        frag2view_dir);
     vec4 total_light = dist_falloff * (diffuse_light + specular_light);
 
     return total_light;
@@ -168,15 +187,21 @@ vec4 ComputeLighting(
     float frag_cos_theta  = dot(-frag2light_dir, light.dir);
     float inner_cos_phi   = light.inner_cutoff;
     float outer_cos_gamma = light.outer_cutoff;
-    float radial_falloff  = clamp((frag_cos_theta - outer_cos_gamma) / (inner_cos_phi - outer_cos_gamma), 0.0, 1.0);
+    float radial_falloff
+        = clamp((frag_cos_theta - outer_cos_gamma) / (inner_cos_phi - outer_cos_gamma), 0.0, 1.0);
 
     // inverse square law distance falloff
     float dist_falloff = ComputeLightFalloff(light.pos, frag_pos);
 
     // specular + diffuse contribution
-    vec4 diffuse_light = ComputeDiffuseLight(light.color, obj_diffuse, frag_norm, frag2light_dir);
-    vec4 specular_light
-        = ComputeSpecularLight(light.color, obj_specular, obj_gloss, frag_norm, frag2light_dir, frag2view_dir);
+    vec4 diffuse_light  = ComputeDiffuseLight(light.color, obj_diffuse, frag_norm, frag2light_dir);
+    vec4 specular_light = ComputeSpecularLight(
+        light.color,
+        obj_specular,
+        obj_gloss,
+        frag_norm,
+        frag2light_dir,
+        frag2view_dir);
     vec4 total_light = radial_falloff * dist_falloff * (diffuse_light + specular_light);
 
     return total_light;
@@ -194,9 +219,14 @@ vec4 ComputeLighting(
     vec3 frag2view_dir  = normalize(view_pos - frag_pos);
     vec3 frag2light_dir = -light.dir;
 
-    vec4 diffuse_light = ComputeDiffuseLight(light.color, obj_diffuse, frag_norm, frag2light_dir);
-    vec4 specular_light
-        = ComputeSpecularLight(light.color, obj_specular, obj_gloss, frag_norm, frag2light_dir, frag2view_dir);
+    vec4 diffuse_light  = ComputeDiffuseLight(light.color, obj_diffuse, frag_norm, frag2light_dir);
+    vec4 specular_light = ComputeSpecularLight(
+        light.color,
+        obj_specular,
+        obj_gloss,
+        frag_norm,
+        frag2light_dir,
+        frag2view_dir);
     vec4 total_light = diffuse_light + specular_light;
 
     return total_light;
@@ -214,8 +244,14 @@ void main()
     if (obj_diffuse.a < 0.5) {
         discard;
     } else {
-        vec4 light_color
-            = ComputeLighting(g_light_source, obj_diffuse, obj_specular, obj_gloss, vo_vtx_pos, frag_norm, g_view_pos);
+        vec4 light_color = ComputeLighting(
+            g_light_source,
+            obj_diffuse,
+            obj_specular,
+            obj_gloss,
+            vo_vtx_pos,
+            frag_norm,
+            g_view_pos);
 
         fo_color = light_color;
     }

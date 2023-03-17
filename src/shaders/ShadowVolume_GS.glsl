@@ -7,8 +7,8 @@
 #define SUN_LIGHT     3
 */
 
-// TODO: I think we should inset the shadow geometry by the vertex normals, not the direction from the light source
-// needs testing
+// TODO: I think we should inset the shadow geometry by the vertex normals, not the direction from
+// the light source needs testing
 
 #define EPSILON 0.001
 
@@ -272,10 +272,10 @@ void EmitVolume(SpotLight light, Vertices verts, Edges edges, mat4 mtx_vp)
 
     // expand the outer cone a bit since the exact cone still has artifacts
     // TODO: play with factor, larger values are better, 1/1.4 didn't work
-    // TODO: still had weird artifacts even for relatively small values, 0 seems to work but generates a lot of extra
-    // geometry
-    // TODO: still needs proper testing to see if its faster since we have to do a lot more compute per vertex
-    // float expanded_outer_cutoff = 0.3 * light.outer_cutoff;
+    // TODO: still had weird artifacts even for relatively small values, 0 seems to work but
+    // generates a lot of extra geometry
+    // TODO: still needs proper testing to see if its faster since we have to do a lot more compute
+    // per vertex float expanded_outer_cutoff = 0.3 * light.outer_cutoff;
     float expanded_outer_cutoff = 0;
 
     bool is_outside_v0 = dot(-light_dir_v0, light.dir) < expanded_outer_cutoff;
@@ -286,7 +286,8 @@ void EmitVolume(SpotLight light, Vertices verts, Edges edges, mat4 mtx_vp)
     bool is_outside_v5 = dot(-light_dir_v5, light.dir) < expanded_outer_cutoff;
 
     // Handle only faces where the face is at least partially within the outer cone
-    if (is_outside_v0 && is_outside_v1 && is_outside_v2 && is_outside_v3 && is_outside_v4 && is_outside_v5) {
+    if (is_outside_v0 && is_outside_v1 && is_outside_v2 && is_outside_v3 && is_outside_v4
+        && is_outside_v5) {
         return;
     }
 

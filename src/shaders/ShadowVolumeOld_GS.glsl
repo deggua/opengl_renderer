@@ -7,8 +7,8 @@
 #define SUN_LIGHT     3
 */
 
-// TODO: I think we should inset the shadow geometry by the vertex normals, not the direction from the light source
-// needs testing
+// TODO: I think we should inset the shadow geometry by the vertex normals, not the direction from
+// the light source needs testing
 
 #define EPSILON 0.001
 

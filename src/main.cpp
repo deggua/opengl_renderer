@@ -21,8 +21,6 @@
 #include "gfx/renderer.hpp"
 #include "math/random.hpp"
 
-PointLight point_light
-    = PointLight().Position(0.0f, 0.0f, 0.0f).Color(1.0f, 1.0f, 1.0f).Intensity(10.0f);
 SunLight sun_light
     = SunLight().Direction({-1.0f, -1.0f, 0.0f}).Color(1.0f, 1.0f, 1.0f).Intensity(1.0f);
 SpotLight spot_light = SpotLight()
@@ -31,6 +29,8 @@ SpotLight spot_light = SpotLight()
                            .Color(1.0f, 1.0f, 1.0f)
                            .Intensity(10.0f)
                            .Cutoff(30.0f, 45.0f);
+
+std::vector<PointLight> point_lights = {};
 
 PlayerCamera g_Camera = PlayerCamera{
     .pos = glm::vec3(0.0f, 0.0f, 3.0f),
@@ -87,8 +87,6 @@ static void ProcessKeyboardInput(GLFWwindow* window)
         g_Camera.pos += normalize(dir_move) * move_speed * g_dt;
     }
 
-    point_light.Position(g_Camera.pos + 2.0f * dir_forward);
-
     spot_light.Position(g_Camera.pos + 0.25f * dir_up).Direction(dir_forward);
 }
 
@@ -130,6 +128,10 @@ static void ProcessMouseButtonInput(GLFWwindow* window, int button, int action, 
 
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         sun_light.dir = g_Camera.FacingDirection();
+    }
+
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        point_lights.push_back(PointLight(g_Camera.pos, {1.0f, 0.7f, 0.1f}, 10.0f));
     }
 }
 
@@ -178,7 +180,7 @@ void RenderInit(GLFWwindow* window)
     (void)window;
 
     TexturePool.LoadStatic(DefaultTexture_Diffuse, Texture2D(glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
-    TexturePool.LoadStatic(DefaultTexture_Specular, Texture2D(glm::vec4(0.0f)));
+    TexturePool.LoadStatic(DefaultTexture_Specular, Texture2D(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)));
     TexturePool.LoadStatic(DefaultTexture_Normal, Texture2D(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f)));
 
     Random_Seed_HighEntropy();
@@ -207,17 +209,11 @@ void RenderLoop(GLFWwindow* window)
         // Object("assets/default.obj").CastsShadows(true),
     };
 
-    // TODO: how should we construct light sources?
-    AmbientLight ambient_light = AmbientLight{
-        rgb_white,
-        0.05f,
-    };
+    AmbientLight ambient_light = AmbientLight(rgb_white, 0.05f);
 
     while (!glfwWindowShouldClose(window)) {
-        SunLight   sun_dupe = sun_light;
-        PointLight pt_dupe  = point_light;
-        SpotLight  sp_dupe  = spot_light;
-        // pt_dupe.pos += Random_InSphere(0.01f);
+        SunLight  sun_dupe = sun_light;
+        SpotLight sp_dupe  = spot_light;
 
         UpdateTime(window);
         ProcessKeyboardInput(window);
@@ -227,15 +223,16 @@ void RenderLoop(GLFWwindow* window)
         rt.ViewPosition(g_Camera.pos);
         rt.ViewMatrix(g_Camera.ViewMatrix());
 
-        // TODO: it's also more efficient to render objects with the same texture/mesh together as
-        // well not sure how that could be tracked
-
         rt.RenderPrepass();
         {
             rt.RenderLighting(ambient_light, objs);
             rt.RenderLighting(sun_dupe, objs);
-            // rt.RenderLighting(pt_dupe, objs);
-            // rt.RenderLighting(sp_dupe, objs);
+
+            for (const auto& light : point_lights) {
+                rt.RenderLighting(light, objs);
+            }
+
+            rt.RenderLighting(sp_dupe, objs);
             rt.RenderSkybox(sky);
         }
         rt.RenderScreen();
@@ -258,8 +255,6 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    // TODO: this should be a setting, also how do we reload it?
-    glfwWindowHint(GLFW_SAMPLES, 4);
 
     GLFWwindow* window = glfwCreateWindow(g_res_w, g_res_h, "Learn OpenGL", nullptr, nullptr);
     if (window == nullptr) {
