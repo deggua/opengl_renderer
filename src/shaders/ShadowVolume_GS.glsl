@@ -251,8 +251,6 @@ void EmitQuad(SpotLight light, vec3 start_vertex, vec3 end_vertex, mat4 mtx_vp)
     EndPrimitive();
 }
 
-// TODO: spot light seems a little trickier, need to check if the vertex is within the cone I think
-// actually maybe not, it might even be the same as the point light
 void EmitVolume(SpotLight light, Vertices verts, Edges edges, mat4 mtx_vp)
 {
     vec3 normal    = cross(edges.e1, edges.e2);

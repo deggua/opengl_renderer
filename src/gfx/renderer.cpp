@@ -8,9 +8,7 @@
 
 #include "common.hpp"
 #include "gfx/opengl.hpp"
-
-// TODO: make this a proper configurable option
-#define MSAA_SAMPLES 4
+#include "utils/settings.hpp"
 
 SHADER_FILE(Common_VS);
 SHADER_FILE(Lighting_FS);
@@ -552,50 +550,63 @@ void FullscreenQuad::Draw() const
 // Renderer
 Renderer::Renderer(bool opengl_logging)
 {
+    LOG_INFO("Compiling 'Common_VS.glsl'");
     Shader vs_common = CompileShader(GL_VERTEX_SHADER, Common_VS.src, Common_VS.len);
 
+    LOG_INFO("Compiling 'ShadowVolume_FS.glsl");
     Shader fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
 
+    LOG_INFO("Compiling 'Lighting_FS.glsl' for Ambient lights");
     Shader fs_ambient = CompileLightShader(
         GL_FRAGMENT_SHADER,
         LightType::Ambient,
         Lighting_FS.src,
         Lighting_FS.len);
 
+    LOG_INFO("Compiling 'Lighting_FS.glsl' for Point lights");
     Shader fs_point = CompileLightShader(
         GL_FRAGMENT_SHADER,
         LightType::Point,
         Lighting_FS.src,
         Lighting_FS.len);
 
+    LOG_INFO("Compiling 'Lighting_FS.glsl' for Spot lights");
     Shader fs_spot
         = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Spot, Lighting_FS.src, Lighting_FS.len);
 
+    LOG_INFO("Compiling 'Lighting_FS.glsl' for Sun lights");
     Shader fs_sun
         = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Sun, Lighting_FS.src, Lighting_FS.len);
 
+    LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Point lights");
     Shader gs_point = CompileLightShader(
         GL_GEOMETRY_SHADER,
         LightType::Point,
         ShadowVolume_GS.src,
         ShadowVolume_GS.len);
 
+    LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Spot lights");
     Shader gs_spot = CompileLightShader(
         GL_GEOMETRY_SHADER,
         LightType::Spot,
         ShadowVolume_GS.src,
         ShadowVolume_GS.len);
 
+    LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Sun lights");
     Shader gs_sun = CompileLightShader(
         GL_GEOMETRY_SHADER,
         LightType::Sun,
         ShadowVolume_GS.src,
         ShadowVolume_GS.len);
 
+    LOG_INFO("Compiling 'Skybox_VS.glsl'");
     Shader vs_skybox = CompileShader(GL_VERTEX_SHADER, Skybox_VS.src, Skybox_VS.len);
+    LOG_INFO("Compiling 'Skybox_FS.glsl'");
     Shader fs_skybox = CompileShader(GL_FRAGMENT_SHADER, Skybox_FS.src, Skybox_FS.len);
 
+    LOG_INFO("Compiling 'Postprocess_VS.glsl'");
     Shader vs_postprocess = CompileShader(GL_VERTEX_SHADER, Postprocess_VS.src, Postprocess_VS.len);
+    LOG_INFO("Compiling 'Postprocess_FS.glsl'");
     Shader fs_postprocess
         = CompileShader(GL_FRAGMENT_SHADER, Postprocess_FS.src, Postprocess_FS.len);
 
@@ -632,9 +643,13 @@ Renderer::Renderer(bool opengl_logging)
     this->msaa.depth_stencil.Reserve();
     this->msaa.color.Reserve();
 
-    this->msaa.depth_stencil
-        .CreateStorage(GL_DEPTH24_STENCIL8, MSAA_SAMPLES, this->res_width, this->res_height);
-    this->msaa.color.CreateStorage(GL_RGB16F, MSAA_SAMPLES, this->res_width, this->res_height);
+    this->msaa.depth_stencil.CreateStorage(
+        GL_DEPTH24_STENCIL8,
+        settings.msaa_samples,
+        this->res_width,
+        this->res_height);
+    this->msaa.color
+        .CreateStorage(GL_RGB16F, settings.msaa_samples, this->res_width, this->res_height);
 
     this->msaa.fbo.Attach(this->msaa.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
     this->msaa.fbo.Attach(this->msaa.color, GL_COLOR_ATTACHMENT0);
@@ -682,9 +697,13 @@ Renderer& Renderer::Resolution(u32 width, u32 height)
     this->res_width  = width;
     this->res_height = height;
 
-    this->msaa.depth_stencil
-        .CreateStorage(GL_DEPTH24_STENCIL8, MSAA_SAMPLES, this->res_width, this->res_height);
-    this->msaa.color.CreateStorage(GL_RGB16F, MSAA_SAMPLES, this->res_width, this->res_height);
+    this->msaa.depth_stencil.CreateStorage(
+        GL_DEPTH24_STENCIL8,
+        settings.msaa_samples,
+        this->res_width,
+        this->res_height);
+    this->msaa.color
+        .CreateStorage(GL_RGB16F, settings.msaa_samples, this->res_width, this->res_height);
 
     this->post.depth_stencil
         .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);

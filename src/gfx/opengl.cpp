@@ -8,6 +8,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "common.hpp"
+#include "utils/settings.hpp"
 
 Shader CompileShader(GLenum shader_type, GLsizei count, const GLchar** src, const GLint* len)
 {
@@ -60,7 +61,7 @@ Texture2D::Texture2D(const std::string& path)
     // load a texture
     GLfloat max_anistropy;
     GL(glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &max_anistropy));
-    GLfloat anistropy = glm::clamp(16.0f, 1.0f, max_anistropy);
+    GLfloat anistropy = glm::clamp((f32)settings.af_samples, 1.0f, max_anistropy);
     GL(glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, anistropy));
 
     int width, height, num_channels;
@@ -72,7 +73,6 @@ Texture2D::Texture2D(const std::string& path)
     // NOTE: this is pretty dumb, but a common convention for normal maps
     // TODO: this doesn't detect, e.g. specular maps, but we don't have any yet
     bool is_srgb = (path.find("_ddn.") == std::string::npos);
-    LOG_INFO("Texture '%s' %s in sRGB", path.c_str(), is_srgb ? "is" : "is not");
 
     GLenum color_fmt = (num_channels == 3) ? GL_RGB : GL_RGBA;
     GLenum internal_fmt;
