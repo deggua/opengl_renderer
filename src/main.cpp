@@ -31,6 +31,7 @@ SpotLight spot_light = SpotLight()
                            .Cutoff(30.0f, 45.0f);
 
 std::vector<PointLight> point_lights = {};
+std::vector<Sprite3D>   sprites      = {};
 
 PlayerCamera g_Camera = PlayerCamera{
     .pos = glm::vec3(0.0f, 0.0f, 3.0f),
@@ -88,6 +89,15 @@ static void ProcessKeyboardInput(GLFWwindow* window)
     }
 
     spot_light.Position(g_Camera.pos + 0.25f * dir_up).Direction(dir_forward);
+
+    static bool prev_r_key = false;
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && prev_r_key == false) {
+        point_lights.clear();
+        sprites.clear();
+        prev_r_key = true;
+    } else if (glfwGetKey(window, GLFW_KEY_R) == GLFW_RELEASE && prev_r_key == true) {
+        prev_r_key = false;
+    }
 }
 
 static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
@@ -131,7 +141,15 @@ static void ProcessMouseButtonInput(GLFWwindow* window, int button, int action, 
     }
 
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-        point_lights.push_back(PointLight(g_Camera.pos, {1.0f, 0.7f, 0.1f}, 10.0f));
+        constexpr glm::vec3 light_color     = {1.0f, 0.7f, 0.1f};
+        constexpr f32       light_intensity = 10.0f;
+
+        point_lights.push_back(PointLight(g_Camera.pos, light_color, light_intensity));
+        sprites.push_back(Sprite3D("assets/flare.png")
+                              .Position(g_Camera.pos)
+                              .Tint(light_color)
+                              .Scale(0.3f)
+                              .Intensity(1.0f));
     }
 }
 
@@ -212,16 +230,17 @@ void RenderLoop(GLFWwindow* window)
     AmbientLight ambient_light = AmbientLight(rgb_white, 0.05f);
 
     while (!glfwWindowShouldClose(window)) {
-        SunLight  sun_dupe = sun_light;
-        SpotLight sp_dupe  = spot_light;
+        PlayerCamera cam      = g_Camera;
+        SunLight     sun_dupe = sun_light;
+        SpotLight    sp_dupe  = spot_light;
 
         UpdateTime(window);
         ProcessKeyboardInput(window);
 
         // setup rendering parameters
         rt.Resolution(g_res_w, g_res_h);
-        rt.ViewPosition(g_Camera.pos);
-        rt.ViewMatrix(g_Camera.ViewMatrix());
+        rt.ViewPosition(cam.pos);
+        rt.ViewMatrix(cam.ViewMatrix());
 
         rt.RenderPrepass();
         {
@@ -234,6 +253,10 @@ void RenderLoop(GLFWwindow* window)
 
             rt.RenderLighting(sp_dupe, objs);
             rt.RenderSkybox(sky);
+
+            for (const auto& sprite : sprites) {
+                rt.RenderSprite(sprite);
+            }
         }
         rt.RenderScreen();
 

@@ -96,3 +96,36 @@ struct Object {
     glm::mat4 WorldMatrix() const;
     glm::mat3 NormalMatrix() const;
 };
+
+// TODO: maybe we should have two subtypes: EmissiveSprite3D and DiffuseSprite3D
+struct Sprite3D {
+    static bool is_vao_initialized;
+    static VAO  vao;
+    static VBO  vbo;
+
+    Texture2D* sprite;
+    glm::vec3  scale     = {1.0f, 1.0f, 1.0f};
+    glm::vec3  pos       = {0.0f, 0.0f, 0.0f};
+    glm::vec3  tint      = {1.0f, 1.0f, 1.0f};
+    f32        intensity = 1.0f;
+
+    Sprite3D(std::string_view tex_path);
+
+    glm::vec3 Position() const;
+    Sprite3D& Position(const glm::vec3& pos);
+
+    glm::vec3 Scale() const;
+    Sprite3D& Scale(const glm::vec3& scale);
+    Sprite3D& Scale(f32 scale);
+
+    glm::vec3 Tint() const;
+    Sprite3D& Tint(f32 r, f32 g, f32 b);
+    Sprite3D& Tint(const glm::vec3& color);
+
+    f32       Intensity() const;
+    Sprite3D& Intensity(f32 intensity);
+
+    glm::mat4 WorldMatrix() const;
+
+    void Draw(ShaderProgram& sp) const;
+};

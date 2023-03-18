@@ -53,7 +53,8 @@
 #    define BP_EXIT() exit(EXIT_FAILURE)
 #endif
 
-// TODO: check what this does in GDB, if it doesn't trigger a breakpoint at the abort call, use int3 or equiv
+// TODO: check what this does in GDB, if it doesn't trigger a breakpoint at the abort call, use int3
+// or equiv
 #define ABORT(msg, ...)               \
     do {                              \
         fprintf(                      \
@@ -114,13 +115,18 @@
                 __PRETTY_FUNCTION__,                                          \
                 ##__VA_ARGS__)
 #    else
-#        define _LOG_INTERNAL(prefix, msg, ...) \
-            fprintf(stdout, prefix ANSI(LOCATION_STYLE, " | %20s:%-4d | ") msg "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#        define _LOG_INTERNAL(prefix, msg, ...)                         \
+            fprintf(                                                    \
+                stdout,                                                 \
+                prefix ANSI(LOCATION_STYLE, "| %20s:%-4d | ") msg "\n", \
+                __FILE__,                                               \
+                __LINE__,                                               \
+                ##__VA_ARGS__)
 #    endif
 #else
 #    define _LOG_INTERNAL(prefix, msg, ...)
 #endif
 
-#define LOG_ERROR(msg, ...)   _LOG_INTERNAL(ANSI(ERROR_STYLE, "ERROR  "), msg, ##__VA_ARGS__)
-#define LOG_WARNING(msg, ...) _LOG_INTERNAL(ANSI(WARNING_STYLE, "WARNING"), msg, ##__VA_ARGS__)
-#define LOG_INFO(msg, ...)    _LOG_INTERNAL(ANSI(INFO_STYLE, "INFO   "), msg, ##__VA_ARGS__)
+#define LOG_ERROR(msg, ...)   _LOG_INTERNAL(ANSI(ERROR_STYLE, " ERROR "), msg, ##__VA_ARGS__)
+#define LOG_WARNING(msg, ...) _LOG_INTERNAL(ANSI(WARNING_STYLE, "  WARN "), msg, ##__VA_ARGS__)
+#define LOG_INFO(msg, ...)    _LOG_INTERNAL(ANSI(INFO_STYLE, "  INFO "), msg, ##__VA_ARGS__)

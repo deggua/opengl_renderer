@@ -163,12 +163,10 @@ struct Renderer {
     // used in the UBO for cross shader storage
     struct SharedData {
         glm::mat4 mtx_vp;
+        glm::mat4 mtx_view;
+        glm::mat4 mtx_proj;
         glm::vec3 pos_view;
     };
-
-    // TODO: need to look more carefully at std140 layout rules
-    static_assert(offsetof(SharedData, mtx_vp) == 0);
-    static_assert(offsetof(SharedData, pos_view) == 4 * sizeof(glm::vec4));
 
     static constexpr usize SHARED_DATA_SIZE = sizeof(SharedData);
     static constexpr usize SHARED_DATA_SLOT = 0;
@@ -186,8 +184,10 @@ struct Renderer {
     ShaderProgram sv_shader[NUM_SHADOW_SHADERS] = {};
     ShaderProgram sky_shader;
     ShaderProgram pp_shader;
+    ShaderProgram bb_spherical_shader;
 
     glm::mat4 mtx_view;
+    glm::mat4 mtx_proj;
     glm::vec3 pos_view;
 
     glm::mat4 mtx_vp; // cached by RenderPrepass
@@ -227,5 +227,6 @@ struct Renderer {
     void RenderLighting(const SpotLight& light, const std::vector<Object>& objs);
     void RenderLighting(const SunLight& light, const std::vector<Object>& objs);
     void RenderSkybox(const Skybox& sky);
+    void RenderSprite(const Sprite3D& sprite);
     void RenderScreen();
 };

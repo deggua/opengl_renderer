@@ -15,6 +15,7 @@
 -Wno-language-extension-token
 -Wno-c99-designator
 -Wno-microsoft-enum-value
+-Wno-shadow
 
 -lopengl32
 -lglfw3

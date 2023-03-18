@@ -56,7 +56,9 @@ uniform mat4 g_mtx_wvp;    // obj    -> screen
 layout(std140, binding = 0) uniform Shared
 {
     mat4 g_mtx_vp;
-    vec3 g_view_pos;
+    mat4 g_mtx_view;
+    mat4 g_mtx_proj;
+    vec3 g_pos_view;
 };
 
 uniform Material g_material;
@@ -246,7 +248,7 @@ void main()
             frag_gloss,
             vo_vtx_pos,
             frag_norm,
-            g_view_pos);
+            g_pos_view);
 
         fo_color = vec4(light_color, 1.0);
     }

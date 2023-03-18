@@ -49,7 +49,9 @@ uniform mat4 g_mtx_wvp;    // obj    -> screen
 layout(std140, binding = 0) uniform Shared
 {
     mat4 g_mtx_vp;
-    vec3 g_view_pos;
+    mat4 g_mtx_view;
+    mat4 g_mtx_proj;
+    vec3 g_pos_view;
 };
 
 #if LIGHT_TYPE == SUN_LIGHT

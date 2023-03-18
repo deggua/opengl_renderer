@@ -18,6 +18,8 @@ SHADER_FILE(Skybox_FS);
 SHADER_FILE(Skybox_VS);
 SHADER_FILE(Postprocess_FS);
 SHADER_FILE(Postprocess_VS);
+SHADER_FILE(SphericalBillboard_FS);
+SHADER_FILE(SphericalBillboard_VS);
 
 // SHADER_FILE(VS_ShadowVolume);
 
@@ -553,7 +555,7 @@ Renderer::Renderer(bool opengl_logging)
     LOG_INFO("Compiling 'Common_VS.glsl'");
     Shader vs_common = CompileShader(GL_VERTEX_SHADER, Common_VS.src, Common_VS.len);
 
-    LOG_INFO("Compiling 'ShadowVolume_FS.glsl");
+    LOG_INFO("Compiling 'ShadowVolume_FS.glsl'");
     Shader fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
 
     LOG_INFO("Compiling 'Lighting_FS.glsl' for Ambient lights");
@@ -610,6 +612,14 @@ Renderer::Renderer(bool opengl_logging)
     Shader fs_postprocess
         = CompileShader(GL_FRAGMENT_SHADER, Postprocess_FS.src, Postprocess_FS.len);
 
+    LOG_INFO("Compiling 'SphericalBillboard_FS.glsl'");
+    Shader fs_spherical_bb
+        = CompileShader(GL_FRAGMENT_SHADER, SphericalBillboard_FS.src, SphericalBillboard_FS.len);
+
+    LOG_INFO("Compiling 'SphericalBillboard_VS.glsl");
+    Shader vs_spherical_bb
+        = CompileShader(GL_VERTEX_SHADER, SphericalBillboard_VS.src, SphericalBillboard_VS.len);
+
     this->dl_shader[(usize)ShaderType::Ambient] = LinkShaders(vs_common, fs_ambient);
     this->dl_shader[(usize)ShaderType::Point]   = LinkShaders(vs_common, fs_point);
     this->dl_shader[(usize)ShaderType::Spot]    = LinkShaders(vs_common, fs_spot);
@@ -619,24 +629,24 @@ Renderer::Renderer(bool opengl_logging)
     this->sv_shader[(usize)ShaderType::Spot]  = LinkShaders(vs_common, gs_spot, fs_shadow);
     this->sv_shader[(usize)ShaderType::Sun]   = LinkShaders(vs_common, gs_sun, fs_shadow);
 
-    this->sky_shader = LinkShaders(vs_skybox, fs_skybox);
-    this->pp_shader  = LinkShaders(vs_postprocess, fs_postprocess);
+    this->sky_shader          = LinkShaders(vs_skybox, fs_skybox);
+    this->pp_shader           = LinkShaders(vs_postprocess, fs_postprocess);
+    this->bb_spherical_shader = LinkShaders(vs_spherical_bb, fs_spherical_bb);
 
     // setup texture indices in shaders that use them
     // TODO: might need different handling if more textures of each type are enabled
     // TODO: using a UBO might be better but we only pay this cost once at startup
     for (ShaderProgram& sp : this->dl_shader) {
-        sp.UseProgram();
         sp.SetUniform("g_material.diffuse", 0);
         sp.SetUniform("g_material.specular", 1);
         sp.SetUniform("g_material.normal", 2);
     }
 
-    this->sky_shader.UseProgram();
     this->sky_shader.SetUniform("g_skybox", 0);
 
-    this->pp_shader.UseProgram();
     this->pp_shader.SetUniform("g_screen", 0);
+
+    this->bb_spherical_shader.SetUniform("g_sprite", 0);
 
     // setup internal render target for MSAA
     this->msaa.fbo.Reserve();
@@ -743,11 +753,14 @@ void Renderer::RenderPrepass()
     // cache the VP matrix for this render pass
     f32       aspect   = (f32)res_width / (f32)res_height;
     glm::mat4 mtx_proj = glm::perspective(glm::radians(this->fov), aspect, CLIP_NEAR, CLIP_FAR);
+    this->mtx_proj     = mtx_proj;
     this->mtx_vp       = mtx_proj * this->mtx_view;
 
     // Update UBO for VP matrix and View Position
     SharedData tmp = {
         this->mtx_vp,
+        this->mtx_view,
+        this->mtx_proj,
         this->pos_view,
     };
     this->shared_data.SubData(0, SHARED_DATA_SIZE, &tmp);
@@ -1047,15 +1060,38 @@ void Renderer::RenderSkybox(const Skybox& sky)
     GL(glDisable(GL_STENCIL_TEST));
     GL(glDepthFunc(GL_LEQUAL));
 
-    f32       aspect   = (f32)res_width / (f32)res_height;
-    glm::mat4 mtx_proj = glm::perspective(glm::radians(this->fov), aspect, CLIP_NEAR, CLIP_FAR);
-    glm::mat4 vp_fixed = mtx_proj * glm::mat4(glm::mat3(this->mtx_view));
+    glm::mat4 vp_fixed = this->mtx_proj * glm::mat4(glm::mat3(this->mtx_view));
 
     ShaderProgram& sp = this->sky_shader;
     sp.UseProgram();
     sp.SetUniform("g_mtx_vp_fixed", vp_fixed);
 
     sky.Draw();
+}
+
+// TODO: some sprites may be emissive (light flares), others may not be (smoke)
+void Renderer::RenderSprite(const Sprite3D& sprite)
+{
+    GL(glEnable(GL_BLEND));
+    GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE));
+    GL(glEnable(GL_DEPTH_TEST));
+    GL(glDepthMask(GL_FALSE));
+    GL(glDepthFunc(GL_LESS));
+    GL(glDisable(GL_STENCIL_TEST));
+    GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+    GL(glEnable(GL_CULL_FACE));
+
+    ShaderProgram& sp = this->bb_spherical_shader;
+    sp.UseProgram();
+    sp.SetUniform("g_mtx_wv", this->mtx_view * sprite.WorldMatrix());
+
+    sp.SetUniform("g_scale", sprite.Scale());
+    sp.SetUniform("g_intensity", sprite.Intensity());
+    sp.SetUniform("g_tint", sprite.Tint());
+
+    sprite.Draw(sp);
+
+    GL(glDepthMask(GL_TRUE));
 }
 
 void Renderer::RenderScreen()
@@ -1078,7 +1114,6 @@ void Renderer::RenderScreen()
     // now render to the default framebuffer using the post FBO's texture
     GL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
     GL(glDisable(GL_DEPTH_TEST));
-    GL(glClearColor(1.0f, 1.0f, 1.0f, 1.0f));
     GL(glDisable(GL_BLEND));
     GL(glDisable(GL_STENCIL_TEST));
     GL(glClear(GL_COLOR_BUFFER_BIT));

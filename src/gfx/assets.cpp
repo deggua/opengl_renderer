@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "gfx/cache.hpp"
+#include "math/math.hpp"
 
 AssetCache<Texture2D> TexturePool(32);
 
@@ -369,7 +370,6 @@ ProcessAssimpMesh(const aiScene& ai_scene, const aiMesh& ai_mesh, std::string_vi
         material = Material();
     }
 
-    // TODO: proper constructor for object
     return Model(geometry, material);
 }
 
@@ -477,8 +477,8 @@ Object& Object::CastsShadows(bool obj_casts_shadows)
 glm::mat4 Object::WorldMatrix() const
 {
     glm::mat4 mtx = glm::mat4(1.0f);
-    mtx           = glm::scale(mtx, this->scale);
     mtx           = glm::translate(mtx, this->pos);
+    mtx           = glm::scale(mtx, this->scale);
 
     return mtx;
 }
@@ -491,4 +491,114 @@ glm::mat3 Object::NormalMatrix() const
     glm::mat4 normal_mtx = glm::mat3(glm::transpose(glm::inverse(world_mtx)));
 
     return normal_mtx;
+}
+
+/* --- Sprite3D --- */
+bool Sprite3D::is_vao_initialized = false;
+VAO  Sprite3D::vao;
+VBO  Sprite3D::vbo;
+
+static const Vertex sprite_quad[] = {
+    {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+    {  {1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    { {-1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+
+    {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+    { {1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+    {  {1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+};
+
+Sprite3D::Sprite3D(std::string_view tex_path)
+{
+    this->sprite = TexturePool.Load(tex_path);
+
+    if (this->is_vao_initialized) {
+        return;
+    }
+
+    this->vao.Reserve();
+    this->vbo.Reserve();
+
+    this->vbo.LoadData(sizeof(sprite_quad), &sprite_quad, GL_STATIC_DRAW);
+
+    this->vbo.Bind();
+    this->vao.SetAttribute(0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, pos));
+    this->vao.SetAttribute(1, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, norm));
+    this->vao.SetAttribute(2, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
+
+    this->is_vao_initialized = true;
+}
+
+glm::vec3 Sprite3D::Position() const
+{
+    return this->pos;
+}
+
+Sprite3D& Sprite3D::Position(const glm::vec3& pos)
+{
+    this->pos = pos;
+    return *this;
+}
+
+glm::vec3 Sprite3D::Scale() const
+{
+    return this->scale;
+}
+
+Sprite3D& Sprite3D::Scale(const glm::vec3& scale)
+{
+    this->scale = scale;
+    return *this;
+}
+
+Sprite3D& Sprite3D::Scale(f32 scale)
+{
+    this->scale = glm::vec3(scale);
+    return *this;
+}
+
+glm::vec3 Sprite3D::Tint() const
+{
+    return this->tint;
+}
+
+Sprite3D& Sprite3D::Tint(f32 r, f32 g, f32 b)
+{
+    this->tint = glm::vec3(r, g, b);
+    return *this;
+}
+
+Sprite3D& Sprite3D::Tint(const glm::vec3& color)
+{
+    this->tint = color;
+    return *this;
+}
+
+f32 Sprite3D::Intensity() const
+{
+    return this->intensity;
+}
+
+Sprite3D& Sprite3D::Intensity(f32 intensity)
+{
+    this->intensity = intensity;
+    return *this;
+}
+
+// TODO: could be useful to have a sprite that rotates in just the xz-plane
+glm::mat4 Sprite3D::WorldMatrix() const
+{
+    return glm::translate(glm::mat4(1.0f), this->pos);
+}
+
+void Sprite3D::Draw(ShaderProgram& sp) const
+{
+    (void)sp;
+
+    GL(glActiveTexture(GL_TEXTURE0));
+    this->sprite->Bind();
+
+    this->vao.Bind();
+    GL(glDrawArrays(GL_TRIANGLES, 0, lengthof(sprite_quad)));
+    this->vao.Unbind();
 }

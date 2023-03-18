@@ -60,11 +60,15 @@ struct AssetCache {
             return &this->asset;
         }
 
-        static void ReturnRef(AssetType* ref)
+        void ReturnRef()
         {
-            Asset* wrapper = containerof(ref, Asset, asset);
-            ASSERT(wrapper->ref_count > 0);
-            wrapper->ref_count -= 1;
+            ASSERT(this->ref_count > 0);
+            this->ref_count -= 1;
+        }
+
+        static Asset* GetContainer(AssetType* ref)
+        {
+            return containerof(ref, Asset, asset);
         }
     };
 
@@ -108,10 +112,33 @@ struct AssetCache {
         Asset::ReturnRef(asset);
     }
 
-    void Compress_VRAM()
+    // unload all assets that have no references
+    void GCAssets()
+    {
+        for (const auto& [key, val] : this->assets) {
+            if (val.ref_count == 0) {
+                val.Unload_VRAM();
+            }
+        }
+    }
+
+    // unloads and reloads all assets from VRAM (should be fine this way due to the indirection)
+    // intended to be used to change parameters that are set at load time (tex quality, AF, etc.)
+    void ReloadAssets()
     {
         for (const auto& [key, val] : this->assets) {
             val.Unload_VRAM();
+            if (val.ref_count != 0) {
+                val.Load_VRAM();
+            }
         }
+    }
+
+    // reloads an individual asset
+    void Reload(AssetType* asset)
+    {
+        Asset* container = Asset::GetContainer(asset);
+        container->Unload_VRAM();
+        container->Load_VRAM();
     }
 };
