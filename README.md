@@ -7,20 +7,20 @@
 * Texture importing (via stb_image)
 * Blinn-Phong shading
 * Point lights, directional lights, and spot lights
-* Real-time shadow volumes (stencil shadows) for all light types via a geometry shader
+* Real-time shadow volumes (stencil shadows) for all light types
 * MSAA + AF
 * Skyboxes
 * HDR Tonemapping
+* Normal maps
 
 ## TODO:
 * Shadow optimizations
-* Normal maps
 * Cubemap reflections
 * Bloom
 * Animations
 * Particle effects
 * Fog
-* UI
+* UI/Text
 * Linux support (currently only tested on Windows)
 
 ## Might be implemented eventually:
@@ -35,6 +35,7 @@
 * LOD/billboards
 * Forward+ rendering
 * Order independent transparency
+* GI model
 
 ## Dependencies:
 * make [(Windows)](https://gnuwin32.sourceforge.net/packages/make.htm)

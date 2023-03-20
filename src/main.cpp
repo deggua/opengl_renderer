@@ -251,7 +251,7 @@ void RenderLoop(GLFWwindow* window)
                 rt.RenderLighting(light, objs);
             }
 
-            // rt.RenderLighting(sp_dupe, objs);
+            rt.RenderLighting(sp_dupe, objs);
             rt.RenderSkybox(sky);
 
             for (const auto& sprite : sprites) {

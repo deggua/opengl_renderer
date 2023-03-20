@@ -82,8 +82,6 @@ uniform SpotLight g_light_source;
 
 #endif
 
-// TODO: make texture samples vec3
-
 // Phong lighting model
 vec3 ComputeAmbientLight(vec3 light_color, vec3 frag_diffuse)
 {
@@ -107,6 +105,8 @@ vec3 ComputeSpecularLight(
     // gloss compensation for Blinn-Phong
     const float energy_factor = 24.0 / (8.0 * PI);
 
+    // TODO: since we're now in tangent space, I think there is a simpler way to compute this
+    // backfacing check, e.g. check if Z < 0
     // backfacing lights and backfacing view shouldn't produce any specular effects
     // attenuating by cos_term avoids the discontinuity
     float cos_term = dot(frag_norm, light_dir);
@@ -191,8 +191,7 @@ vec3 ComputeLighting(
     vec3 frag2light_dir = vo_light_dir;
 
     // linear radial falloff
-    // TODO: this is wrong now, need to use world_pos of frag and world light pos
-    float frag_cos_theta  = dot(-frag2light_dir, light.dir);
+    float frag_cos_theta  = dot(-normalize(light.pos - frag_pos), light.dir);
     float inner_cos_phi   = light.inner_cutoff;
     float outer_cos_gamma = light.outer_cutoff;
     float radial_falloff
