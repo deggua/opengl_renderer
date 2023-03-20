@@ -78,21 +78,10 @@ uniform SpotLight g_light_source;
 #if LIGHT_TYPE != AMBIENT_LIGHT
 void main()
 {
-#    if 0
     vec3 tangent   = normalize(g_mtx_normal * vi_vtx_tangent);
     vec3 bitangent = normalize(g_mtx_normal * vi_vtx_bitangent);
     vec3 normal    = normalize(g_mtx_normal * vi_vtx_normal);
     mat3 mtx_tbn   = transpose(mat3(tangent, bitangent, normal));
-#    else
-    vec3 tangent   = normalize(g_mtx_normal * vi_vtx_tangent);
-    vec3 normal    = normalize(g_mtx_normal * vi_vtx_normal);
-    tangent        = normalize(tangent - dot(tangent, normal) * normal);
-    vec3 bitangent = cross(normal, tangent);
-    if (dot(bitangent, normalize(g_mtx_normal * vi_vtx_bitangent)) < 0.0) {
-        bitangent = -bitangent;
-    }
-    mat3 mtx_tbn = transpose(mat3(tangent, bitangent, normal));
-#    endif
 
     vec3 vtx_pos    = vec3(g_mtx_world * vec4(vi_vtx_pos, 1.0));
     vo_vtx_pos      = vtx_pos;

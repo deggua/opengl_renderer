@@ -218,11 +218,25 @@ Geometry::Geometry(const aiMesh& mesh)
     // collect vertex positions, normals, tex coords
     std::vector<Vertex> vertices = {};
     for (size_t ii = 0; ii < mesh.mNumVertices; ii++) {
+        glm::vec3 normal  = {mesh.mNormals[ii].x, mesh.mNormals[ii].y, mesh.mNormals[ii].z};
+        glm::vec3 tangent = {mesh.mTangents[ii].x, mesh.mTangents[ii].y, mesh.mTangents[ii].z};
+        glm::vec3 bitangent_mesh
+            = {mesh.mBitangents[ii].x, mesh.mBitangents[ii].y, mesh.mBitangents[ii].z};
+
+        // Gramm-Schmidt orthonormalization
+        tangent = glm::normalize(tangent - glm::dot(tangent, normal) * normal);
+        // compute the bitangent, avoids non-orthonormal issue
+        glm::vec3 bitangent = glm::cross(normal, tangent);
+        // flip bitangent if direction doesn't agree with the mesh's
+        if (glm::dot(bitangent_mesh, bitangent) < 0.0f) {
+            bitangent *= -1.0f;
+        }
+
         Vertex vert = Vertex{
             {mesh.mVertices[ii].x, mesh.mVertices[ii].y, mesh.mVertices[ii].z},
-            {mesh.mNormals[ii].x, mesh.mNormals[ii].y, mesh.mNormals[ii].z},
-            {mesh.mTangents[ii].x, mesh.mTangents[ii].y, mesh.mTangents[ii].z},
-            {mesh.mBitangents[ii].x, mesh.mBitangents[ii].y, mesh.mBitangents[ii].z},
+            normal,
+            tangent,
+            bitangent,
             {0.0f, 0.0f},
         };
 
