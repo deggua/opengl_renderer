@@ -12,6 +12,7 @@
 struct Material {
     sampler2D diffuse;
     sampler2D specular;
+    sampler2D normal;
     float     gloss;
 };
 
@@ -41,6 +42,10 @@ struct AmbientLight {
 };
 
 // in
+#if LIGHT_TYPE != AMBIENT_LIGHT
+in vec3 vo_light_dir;
+in vec3 vo_view_dir;
+#endif
 in vec3 vo_vtx_pos;
 in vec3 vo_vtx_normal;
 in vec2 vo_vtx_texcoord;
@@ -128,29 +133,32 @@ float ComputeLightFalloff(vec3 light_pos, vec3 frag_pos)
 }
 
 // Light source computation
+#if LIGHT_TYPE == AMBIENT_LIGHT
 vec3 ComputeLighting(
     AmbientLight light,
     vec3         frag_diffuse,
     vec3         frag_specular,
+    vec3         frag_norm,
     float        frag_gloss,
     vec3         frag_pos,
-    vec3         frag_norm,
     vec3         view_pos)
 {
     return ComputeAmbientLight(light.color, frag_diffuse);
 }
+#endif
 
+#if LIGHT_TYPE == POINT_LIGHT
 vec3 ComputeLighting(
     PointLight light,
     vec3       frag_diffuse,
     vec3       frag_specular,
+    vec3       frag_norm,
     float      frag_gloss,
     vec3       frag_pos,
-    vec3       frag_norm,
     vec3       view_pos)
 {
-    vec3 frag2view_dir  = normalize(view_pos - frag_pos);
-    vec3 frag2light_dir = normalize(light.pos - frag_pos);
+    vec3 frag2view_dir  = vo_view_dir;
+    vec3 frag2light_dir = vo_light_dir;
 
     float dist_falloff = ComputeLightFalloff(light.pos, frag_pos);
 
@@ -167,20 +175,23 @@ vec3 ComputeLighting(
 
     return total_light;
 }
+#endif
 
+#if LIGHT_TYPE == SPOT_LIGHT
 vec3 ComputeLighting(
     SpotLight light,
     vec3      frag_diffuse,
     vec3      frag_specular,
+    vec3      frag_norm,
     float     frag_gloss,
     vec3      frag_pos,
-    vec3      frag_norm,
     vec3      view_pos)
 {
-    vec3 frag2view_dir  = normalize(view_pos - frag_pos);
-    vec3 frag2light_dir = normalize(light.pos - frag_pos);
+    vec3 frag2view_dir  = vo_view_dir;
+    vec3 frag2light_dir = vo_light_dir;
 
     // linear radial falloff
+    // TODO: this is wrong now, need to use world_pos of frag and world light pos
     float frag_cos_theta  = dot(-frag2light_dir, light.dir);
     float inner_cos_phi   = light.inner_cutoff;
     float outer_cos_gamma = light.outer_cutoff;
@@ -203,18 +214,20 @@ vec3 ComputeLighting(
 
     return total_light;
 }
+#endif
 
+#if LIGHT_TYPE == SUN_LIGHT
 vec3 ComputeLighting(
     SunLight light,
     vec3     frag_diffuse,
     vec3     frag_specular,
+    vec3     frag_norm,
     float    frag_gloss,
     vec3     frag_pos,
-    vec3     frag_norm,
     vec3     view_pos)
 {
-    vec3 frag2view_dir  = normalize(view_pos - frag_pos);
-    vec3 frag2light_dir = -light.dir;
+    vec3 frag2view_dir  = vo_view_dir;
+    vec3 frag2light_dir = vo_light_dir;
 
     vec3 diffuse_light  = ComputeDiffuseLight(light.color, frag_diffuse, frag_norm, frag2light_dir);
     vec3 specular_light = ComputeSpecularLight(
@@ -228,14 +241,14 @@ vec3 ComputeLighting(
 
     return total_light;
 }
+#endif
 
 // Main program
 void main()
 {
-    vec3 frag_norm = normalize(vo_vtx_normal); // TODO: is normalizing necessary?
-
     vec4  frag_diffuse  = texture(g_material.diffuse, vo_vtx_texcoord);
     vec4  frag_specular = texture(g_material.specular, vo_vtx_texcoord);
+    vec3  frag_normal   = 2.0 * texture(g_material.normal, vo_vtx_texcoord).rgb - 1.0;
     float frag_gloss    = g_material.gloss;
 
     if (frag_diffuse.a < 0.5) {
@@ -245,9 +258,9 @@ void main()
             g_light_source,
             frag_diffuse.rgb,
             frag_specular.rgb,
+            frag_normal,
             frag_gloss,
             vo_vtx_pos,
-            frag_norm,
             g_pos_view);
 
         fo_color = vec4(light_color, 1.0);

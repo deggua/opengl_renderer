@@ -7,13 +7,12 @@
 #define SUN_LIGHT     3
 */
 
-// TODO: I think we should inset the shadow geometry by the vertex normals, not the direction from
-// the light source needs testing
-
 #define EPSILON 0.001
 
 struct PointLight {
     vec3 pos;
+
+    vec3 color;
 };
 
 struct SpotLight {
@@ -21,10 +20,18 @@ struct SpotLight {
     vec3  dir;          // must be pre-normalized
     float inner_cutoff; // dot(dir, inner_dir)
     float outer_cutoff; // dot(dit, outer_dir)
+
+    vec3 color;
 };
 
 struct SunLight {
     vec3 dir; // must be pre-normalized
+
+    vec3 color;
+};
+
+struct AmbientLight {
+    vec3 color;
 };
 
 struct Edges {
@@ -47,10 +54,6 @@ in vec3 vo_vtx_pos[]; // an array of 6 vertices (triangle with adjacency)
 in vec3 vo_vtx_normal[];
 in vec2 vo_vtx_texcoord[];
 
-uniform mat3 g_mtx_normal; // normal -> world
-uniform mat4 g_mtx_world;  // obj    -> world
-uniform mat4 g_mtx_wvp;    // obj    -> screen
-
 layout(std140, binding = 0) uniform Shared
 {
     mat4 g_mtx_vp;
@@ -58,6 +61,10 @@ layout(std140, binding = 0) uniform Shared
     mat4 g_mtx_proj;
     vec3 g_pos_view;
 };
+
+uniform mat3 g_mtx_normal; // normal -> world
+uniform mat4 g_mtx_world;  // obj    -> world
+uniform mat4 g_mtx_wvp;    // obj    -> screen
 
 #if LIGHT_TYPE == SUN_LIGHT
 uniform SunLight g_light_source;

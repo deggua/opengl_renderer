@@ -10,8 +10,9 @@
 #include "gfx/opengl.hpp"
 #include "utils/settings.hpp"
 
-SHADER_FILE(Common_VS);
+SHADER_FILE(Lighting_VS);
 SHADER_FILE(Lighting_FS);
+SHADER_FILE(ShadowVolume_VS);
 SHADER_FILE(ShadowVolume_FS);
 SHADER_FILE(ShadowVolume_GS);
 SHADER_FILE(Skybox_FS);
@@ -552,82 +553,133 @@ void FullscreenQuad::Draw() const
 // Renderer
 Renderer::Renderer(bool opengl_logging)
 {
-    LOG_INFO("Compiling 'Common_VS.glsl'");
-    Shader vs_common = CompileShader(GL_VERTEX_SHADER, Common_VS.src, Common_VS.len);
+    // Lighting
+    Shader vs_light_ambient, vs_light_spot, vs_light_sun, vs_light_point;
+    Shader fs_light_ambient, fs_light_spot, fs_light_sun, fs_light_point;
+    {
+        LOG_INFO("Compiling 'Lighting_VS.glsl' for Ambient lights");
+        vs_light_ambient = CompileLightShader(
+            GL_VERTEX_SHADER,
+            LightType::Ambient,
+            Lighting_VS.src,
+            Lighting_VS.len);
 
-    LOG_INFO("Compiling 'ShadowVolume_FS.glsl'");
-    Shader fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
+        LOG_INFO("Compiling 'Lighting_VS.glsl' for Spot lights");
+        vs_light_spot = CompileLightShader(
+            GL_VERTEX_SHADER,
+            LightType::Spot,
+            Lighting_VS.src,
+            Lighting_VS.len);
 
-    LOG_INFO("Compiling 'Lighting_FS.glsl' for Ambient lights");
-    Shader fs_ambient = CompileLightShader(
-        GL_FRAGMENT_SHADER,
-        LightType::Ambient,
-        Lighting_FS.src,
-        Lighting_FS.len);
+        LOG_INFO("Compiling 'Lighting_VS.glsl' for Sun lights");
+        vs_light_sun = CompileLightShader(
+            GL_VERTEX_SHADER,
+            LightType::Sun,
+            Lighting_VS.src,
+            Lighting_VS.len);
 
-    LOG_INFO("Compiling 'Lighting_FS.glsl' for Point lights");
-    Shader fs_point = CompileLightShader(
-        GL_FRAGMENT_SHADER,
-        LightType::Point,
-        Lighting_FS.src,
-        Lighting_FS.len);
+        LOG_INFO("Compiling 'Lighting_VS.glsl' for Point lights");
+        vs_light_point = CompileLightShader(
+            GL_VERTEX_SHADER,
+            LightType::Point,
+            Lighting_VS.src,
+            Lighting_VS.len);
 
-    LOG_INFO("Compiling 'Lighting_FS.glsl' for Spot lights");
-    Shader fs_spot
-        = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Spot, Lighting_FS.src, Lighting_FS.len);
+        LOG_INFO("Compiling 'Lighting_FS.glsl' for Ambient lights");
+        fs_light_ambient = CompileLightShader(
+            GL_FRAGMENT_SHADER,
+            LightType::Ambient,
+            Lighting_FS.src,
+            Lighting_FS.len);
 
-    LOG_INFO("Compiling 'Lighting_FS.glsl' for Sun lights");
-    Shader fs_sun
-        = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Sun, Lighting_FS.src, Lighting_FS.len);
+        LOG_INFO("Compiling 'Lighting_FS.glsl' for Point lights");
+        fs_light_point = CompileLightShader(
+            GL_FRAGMENT_SHADER,
+            LightType::Point,
+            Lighting_FS.src,
+            Lighting_FS.len);
 
-    LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Point lights");
-    Shader gs_point = CompileLightShader(
-        GL_GEOMETRY_SHADER,
-        LightType::Point,
-        ShadowVolume_GS.src,
-        ShadowVolume_GS.len);
+        LOG_INFO("Compiling 'Lighting_FS.glsl' for Spot lights");
+        fs_light_spot = CompileLightShader(
+            GL_FRAGMENT_SHADER,
+            LightType::Spot,
+            Lighting_FS.src,
+            Lighting_FS.len);
 
-    LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Spot lights");
-    Shader gs_spot = CompileLightShader(
-        GL_GEOMETRY_SHADER,
-        LightType::Spot,
-        ShadowVolume_GS.src,
-        ShadowVolume_GS.len);
+        LOG_INFO("Compiling 'Lighting_FS.glsl' for Sun lights");
+        fs_light_sun = CompileLightShader(
+            GL_FRAGMENT_SHADER,
+            LightType::Sun,
+            Lighting_FS.src,
+            Lighting_FS.len);
+    }
 
-    LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Sun lights");
-    Shader gs_sun = CompileLightShader(
-        GL_GEOMETRY_SHADER,
-        LightType::Sun,
-        ShadowVolume_GS.src,
-        ShadowVolume_GS.len);
+    // Shadows
+    Shader vs_shadow;
+    Shader gs_shadow_point, gs_shadow_spot, gs_shadow_sun;
+    Shader fs_shadow;
+    {
+        LOG_INFO("Compiling 'ShadowVolume_VS.glsl'");
+        vs_shadow = CompileShader(GL_VERTEX_SHADER, ShadowVolume_VS.src, ShadowVolume_VS.len);
 
-    LOG_INFO("Compiling 'Skybox_VS.glsl'");
-    Shader vs_skybox = CompileShader(GL_VERTEX_SHADER, Skybox_VS.src, Skybox_VS.len);
-    LOG_INFO("Compiling 'Skybox_FS.glsl'");
-    Shader fs_skybox = CompileShader(GL_FRAGMENT_SHADER, Skybox_FS.src, Skybox_FS.len);
+        LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Point lights");
+        gs_shadow_point = CompileLightShader(
+            GL_GEOMETRY_SHADER,
+            LightType::Point,
+            ShadowVolume_GS.src,
+            ShadowVolume_GS.len);
 
-    LOG_INFO("Compiling 'Postprocess_VS.glsl'");
-    Shader vs_postprocess = CompileShader(GL_VERTEX_SHADER, Postprocess_VS.src, Postprocess_VS.len);
-    LOG_INFO("Compiling 'Postprocess_FS.glsl'");
-    Shader fs_postprocess
-        = CompileShader(GL_FRAGMENT_SHADER, Postprocess_FS.src, Postprocess_FS.len);
+        LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Spot lights");
+        gs_shadow_spot = CompileLightShader(
+            GL_GEOMETRY_SHADER,
+            LightType::Spot,
+            ShadowVolume_GS.src,
+            ShadowVolume_GS.len);
 
-    LOG_INFO("Compiling 'SphericalBillboard_FS.glsl'");
-    Shader fs_spherical_bb
-        = CompileShader(GL_FRAGMENT_SHADER, SphericalBillboard_FS.src, SphericalBillboard_FS.len);
+        LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Sun lights");
+        gs_shadow_sun = CompileLightShader(
+            GL_GEOMETRY_SHADER,
+            LightType::Sun,
+            ShadowVolume_GS.src,
+            ShadowVolume_GS.len);
 
-    LOG_INFO("Compiling 'SphericalBillboard_VS.glsl");
-    Shader vs_spherical_bb
-        = CompileShader(GL_VERTEX_SHADER, SphericalBillboard_VS.src, SphericalBillboard_VS.len);
+        LOG_INFO("Compiling 'ShadowVolume_FS.glsl'");
+        fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
+    }
 
-    this->dl_shader[(usize)ShaderType::Ambient] = LinkShaders(vs_common, fs_ambient);
-    this->dl_shader[(usize)ShaderType::Point]   = LinkShaders(vs_common, fs_point);
-    this->dl_shader[(usize)ShaderType::Spot]    = LinkShaders(vs_common, fs_spot);
-    this->dl_shader[(usize)ShaderType::Sun]     = LinkShaders(vs_common, fs_sun);
+    // Other
+    Shader vs_skybox, fs_skybox;
+    Shader vs_postprocess, fs_postprocess;
+    Shader fs_spherical_bb, vs_spherical_bb;
+    {
+        LOG_INFO("Compiling 'Skybox_VS.glsl'");
+        vs_skybox = CompileShader(GL_VERTEX_SHADER, Skybox_VS.src, Skybox_VS.len);
+        LOG_INFO("Compiling 'Skybox_FS.glsl'");
+        fs_skybox = CompileShader(GL_FRAGMENT_SHADER, Skybox_FS.src, Skybox_FS.len);
 
-    this->sv_shader[(usize)ShaderType::Point] = LinkShaders(vs_common, gs_point, fs_shadow);
-    this->sv_shader[(usize)ShaderType::Spot]  = LinkShaders(vs_common, gs_spot, fs_shadow);
-    this->sv_shader[(usize)ShaderType::Sun]   = LinkShaders(vs_common, gs_sun, fs_shadow);
+        LOG_INFO("Compiling 'Postprocess_VS.glsl'");
+        vs_postprocess = CompileShader(GL_VERTEX_SHADER, Postprocess_VS.src, Postprocess_VS.len);
+        LOG_INFO("Compiling 'Postprocess_FS.glsl'");
+        fs_postprocess = CompileShader(GL_FRAGMENT_SHADER, Postprocess_FS.src, Postprocess_FS.len);
+
+        LOG_INFO("Compiling 'SphericalBillboard_FS.glsl'");
+        fs_spherical_bb = CompileShader(
+            GL_FRAGMENT_SHADER,
+            SphericalBillboard_FS.src,
+            SphericalBillboard_FS.len);
+        LOG_INFO("Compiling 'SphericalBillboard_VS.glsl");
+        vs_spherical_bb
+            = CompileShader(GL_VERTEX_SHADER, SphericalBillboard_VS.src, SphericalBillboard_VS.len);
+    }
+
+    this->dl_shader[(usize)ShaderType::Ambient] = LinkShaders(vs_light_ambient, fs_light_ambient);
+    this->dl_shader[(usize)ShaderType::Point]   = LinkShaders(vs_light_point, fs_light_point);
+    this->dl_shader[(usize)ShaderType::Spot]    = LinkShaders(vs_light_spot, fs_light_spot);
+    this->dl_shader[(usize)ShaderType::Sun]     = LinkShaders(vs_light_sun, fs_light_sun);
+
+    this->sv_shader[(usize)ShaderType::Point] = LinkShaders(vs_shadow, gs_shadow_point, fs_shadow);
+    this->sv_shader[(usize)ShaderType::Spot]  = LinkShaders(vs_shadow, gs_shadow_spot, fs_shadow);
+    this->sv_shader[(usize)ShaderType::Sun]   = LinkShaders(vs_shadow, gs_shadow_sun, fs_shadow);
 
     this->sky_shader          = LinkShaders(vs_skybox, fs_skybox);
     this->pp_shader           = LinkShaders(vs_postprocess, fs_postprocess);

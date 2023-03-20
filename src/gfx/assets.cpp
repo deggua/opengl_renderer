@@ -221,7 +221,9 @@ Geometry::Geometry(const aiMesh& mesh)
         Vertex vert = Vertex{
             {mesh.mVertices[ii].x, mesh.mVertices[ii].y, mesh.mVertices[ii].z},
             {mesh.mNormals[ii].x, mesh.mNormals[ii].y, mesh.mNormals[ii].z},
-            {0.0f, 0.0f}
+            {mesh.mTangents[ii].x, mesh.mTangents[ii].y, mesh.mTangents[ii].z},
+            {mesh.mBitangents[ii].x, mesh.mBitangents[ii].y, mesh.mBitangents[ii].z},
+            {0.0f, 0.0f},
         };
 
         if (mesh.mTextureCoords[0]) {
@@ -244,11 +246,15 @@ Geometry::Geometry(const aiMesh& mesh)
 
     this->vao_visual.SetAttribute(0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, pos));
     this->vao_visual.SetAttribute(1, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, norm));
-    this->vao_visual.SetAttribute(2, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
+    this->vao_visual.SetAttribute(2, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tangent));
+    this->vao_visual.SetAttribute(3, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, bitangent));
+    this->vao_visual.SetAttribute(4, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
 
     this->vao_shadow.SetAttribute(0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, pos));
     this->vao_shadow.SetAttribute(1, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, norm));
-    this->vao_shadow.SetAttribute(2, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
+    this->vao_shadow.SetAttribute(2, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tangent));
+    this->vao_visual.SetAttribute(3, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, bitangent));
+    this->vao_shadow.SetAttribute(4, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
 
     this->vao_visual.Bind();
     this->ebo_visual.LoadData(
@@ -294,6 +300,7 @@ Material::Material()
 {
     this->diffuse  = TexturePool.Load(DefaultTexture_Diffuse);
     this->specular = TexturePool.Load(DefaultTexture_Specular);
+    this->normal   = TexturePool.Load(DefaultTexture_Normal);
     this->gloss    = 1.0f;
 }
 
@@ -323,6 +330,19 @@ Material::Material(const aiMaterial& material, std::string_view directory)
         this->specular = TexturePool.Load(DefaultTexture_Specular);
     }
 
+    // TODO: Displacement vs Normals vs Height?
+    if (material.GetTextureCount(aiTextureType_DISPLACEMENT)) {
+        aiString normal_path;
+        material.GetTexture(aiTextureType_DISPLACEMENT, 0, &normal_path);
+
+        std::stringstream file_path;
+        file_path << directory << "/" << normal_path.C_Str();
+
+        this->normal = TexturePool.Load(file_path.str());
+    } else {
+        this->normal = TexturePool.Load(DefaultTexture_Normal);
+    }
+
     // set the gloss
     material.Get(AI_MATKEY_SHININESS, this->gloss);
     ASSERT(this->gloss >= 1.0f);
@@ -335,6 +355,9 @@ void Material::Use(ShaderProgram& sp) const
 
     GL(glActiveTexture(GL_TEXTURE1));
     this->specular->Bind();
+
+    GL(glActiveTexture(GL_TEXTURE2));
+    this->normal->Bind();
 
     sp.SetUniform("material.gloss", this->gloss);
 }
@@ -394,8 +417,9 @@ Object::Object(std::string_view file_path)
     std::string fp = std::string(file_path);
 
     Assimp::Importer importer;
-    const aiScene*   scene
-        = importer.ReadFile(fp.c_str(), aiProcess_Triangulate | aiProcess_GenNormals);
+    const aiScene*   scene = importer.ReadFile(
+        fp.c_str(),
+        aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_CalcTangentSpace);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         ABORT("Asset import failed for '%s'", fp.c_str());
@@ -499,13 +523,13 @@ VAO  Sprite3D::vao;
 VBO  Sprite3D::vbo;
 
 static const Vertex sprite_quad[] = {
-    {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
-    {  {1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-    { {-1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {}, {0.0f, 0.0f}},
+    {  {1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {}, {1.0f, 1.0f}},
+    { {-1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {}, {0.0f, 1.0f}},
 
-    {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
-    { {1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
-    {  {1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {}, {0.0f, 0.0f}},
+    { {1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {}, {1.0f, 0.0f}},
+    {  {1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {}, {1.0f, 1.0f}},
 };
 
 Sprite3D::Sprite3D(std::string_view tex_path)

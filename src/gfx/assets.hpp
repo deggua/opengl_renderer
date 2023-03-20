@@ -25,6 +25,7 @@ extern AssetCache<Texture2D> TexturePool;
 struct Material {
     Texture2D* diffuse;
     Texture2D* specular;
+    Texture2D* normal;
     f32        gloss;
 
     Material();
@@ -34,9 +35,11 @@ struct Material {
 };
 
 struct Vertex {
-    glm::vec3 pos  = {0.0f, 0.0f, 0.0f};
-    glm::vec3 norm = {0.0f, 0.0f, 0.0f};
-    glm::vec2 tex  = {0.0f, 0.0f};
+    glm::vec3 pos       = {0.0f, 0.0f, 0.0f};
+    glm::vec3 norm      = {0.0f, 0.0f, 0.0f};
+    glm::vec3 tangent   = {0.0f, 0.0f, 0.0f};
+    glm::vec3 bitangent = {0.0f, 0.0f, 0.0f};
+    glm::vec2 tex       = {0.0f, 0.0f};
 };
 
 struct Geometry {
