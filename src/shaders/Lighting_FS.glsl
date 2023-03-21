@@ -102,11 +102,15 @@ vec3 ComputeSpecularLight(
     vec3  light_dir,
     vec3  view_dir)
 {
-    // gloss compensation for Blinn-Phong
-    const float energy_factor = 24.0 / (8.0 * PI);
+    // energy conserving factor for Blinn-Phong
+    // see: https://www.rorydriscoll.com/2009/01/25/energy-conservation-in-games/
+    float energy_factor = (frag_gloss + 8.0) / (8.0 * PI);
 
     // TODO: since we're now in tangent space, I think there is a simpler way to compute this
     // backfacing check, e.g. check if Z < 0
+    // TODO: I don't know if this is actually required, some SO posts seemed to recommend this
+    // but the above link just has the cos term from the dot product, so maybe it isn't
+    // would be good to test by looking at a glossy sphere near the discontinuity
     // backfacing lights and backfacing view shouldn't produce any specular effects
     // attenuating by cos_term avoids the discontinuity
     float cos_term = dot(frag_norm, light_dir);

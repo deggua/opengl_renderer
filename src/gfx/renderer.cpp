@@ -22,8 +22,6 @@ SHADER_FILE(Postprocess_VS);
 SHADER_FILE(SphericalBillboard_FS);
 SHADER_FILE(SphericalBillboard_VS);
 
-// SHADER_FILE(VS_ShadowVolume);
-
 struct String {
     size_t      len;
     const char* str;
