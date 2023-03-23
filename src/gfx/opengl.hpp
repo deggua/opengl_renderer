@@ -23,9 +23,9 @@ struct Handle {
 
     Handle() = default;
 
-    Handle(T hand)
+    Handle(T handle)
     {
-        this->handle = hand;
+        this->handle = handle;
     }
 
     explicit operator T() const
@@ -36,7 +36,8 @@ struct Handle {
 
 struct Uniform : Handle<GLint> {
     using Handle<GLint>::Handle;
-    std::string name;
+    std::string
+        name; // TODO: could just use a fixed size char arrays, uniform names should be short
 
     Uniform(const char* name, GLint location);
 };
@@ -60,6 +61,7 @@ struct TextureRT : Handle<GLuint> {
     void Unbind() const;
     void Reserve();
     void Delete();
+
     void Setup(GLenum format, GLsizei width, GLsizei height);
 };
 
@@ -78,6 +80,9 @@ struct Shader : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 };
 
+Shader CompileShader(GLenum shader_type, GLsizei count, const GLchar** src, const GLint* len);
+Shader CompileShader(GLenum shader_type, const char* src, i32 len);
+
 struct ShaderProgram : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
@@ -87,15 +92,6 @@ struct ShaderProgram : Handle<GLuint> {
     {
         GL(glUseProgram(GLuint(*this)));
     }
-
-    // TODO:
-#if 0
-    template<typename T>
-    T GetUniform(const char* name)
-    {
-
-    }
-#endif
 
     template<typename T>
     void SetUniform(const char* name, const T& value)
@@ -152,6 +148,7 @@ struct ShaderProgram : Handle<GLuint> {
     }
 };
 
+// Vertex Array Object
 struct VAO : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
@@ -164,6 +161,7 @@ struct VAO : Handle<GLuint> {
     SetAttribute(GLuint index, GLint components, GLenum type, GLsizei stride, uintptr_t offset);
 };
 
+// Vertex Buffer Object
 struct VBO : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
@@ -175,6 +173,7 @@ struct VBO : Handle<GLuint> {
     void LoadData(size_t size, const void* data, GLenum usage) const;
 };
 
+// Element Buffer Object
 struct EBO : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
@@ -186,6 +185,7 @@ struct EBO : Handle<GLuint> {
     void LoadData(size_t size, const void* data, GLenum usage) const;
 };
 
+// Uniform Buffer Object
 struct UBO : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
@@ -198,6 +198,7 @@ struct UBO : Handle<GLuint> {
     void BindSlot(GLuint index) const;
 };
 
+// Render Buffer Object
 struct RBO : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
@@ -209,7 +210,7 @@ struct RBO : Handle<GLuint> {
     void CreateStorage(GLenum internal_format, GLsizei samples, GLsizei width, GLsizei height);
 };
 
-// TODO: multisample support
+// Frame Buffer Object
 struct FBO : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
@@ -223,10 +224,6 @@ struct FBO : Handle<GLuint> {
     void Attach(RBO rbo, GLenum attachment) const;
     void Attach(TextureRT tex_rt, GLenum attachment) const;
 };
-
-Shader CompileShader(GLenum shader_type, GLsizei count, const GLchar** src, const GLint* len);
-
-Shader CompileShader(GLenum shader_type, const char* src, i32 len);
 
 template<class... Ts, class = std::enable_if_t<std::conjunction_v<std::is_same<Shader, Ts>...>>>
 void AttachShaders(ShaderProgram program, Shader shader, Ts... shaders)

@@ -151,14 +151,90 @@ struct FullscreenQuad {
     void Draw() const;
 };
 
+// pack of data for render passes to use
+struct RenderState {
+    glm::mat4 mtx_vp;   // VP matrix         (world -> screen)
+    glm::mat4 mtx_view; // View matrix       (world -> view)
+    glm::mat4 mtx_proj; // Projection matrix (view -> screen)
+
+    glm::vec3 pos_view; // View position (in world space)
+};
+
+// TODO: it's kind of dumb to compile some of the shaders multiple times since they don't change
+// maybe we can use an asset cache to store compiled shaders
+struct Renderer_AmbientLighting {
+    Shader        vs, fs;
+    ShaderProgram sp_light;
+
+    Renderer_AmbientLighting();
+
+    void Render(const AmbientLight& light, const std::vector<Object>& objs, const RenderState& rs);
+};
+
+struct Renderer_PointLighting {
+    Shader        vs, fs;
+    Shader        vs_shadow, gs_shadow, fs_shadow;
+    ShaderProgram sp_light, sp_shadow;
+
+    Renderer_PointLighting();
+
+    void Render(const PointLight& light, const std::vector<Object>& objs, const RenderState& rs);
+};
+
+struct Renderer_SpotLighting {
+    Shader        vs, fs;
+    Shader        vs_shadow, gs_shadow, fs_shadow;
+    ShaderProgram sp_light, sp_shadow;
+
+    Renderer_SpotLighting();
+
+    void Render(const SpotLight& light, const std::vector<Object>& objs, const RenderState& rs);
+};
+
+struct Renderer_SunLighting {
+    Shader        vs, fs;
+    Shader        vs_shadow, gs_shadow, fs_shadow;
+    ShaderProgram sp_light, sp_shadow;
+
+    Renderer_SunLighting();
+
+    void Render(const SunLight& light, const std::vector<Object>& objs, const RenderState& rs);
+};
+
+struct Renderer_Skybox {
+    Shader        vs, fs;
+    ShaderProgram sp;
+
+    Renderer_Skybox();
+
+    void Render(const Skybox& sky, const RenderState& rs);
+};
+
+struct Renderer_SphericalBillboard {
+    Shader        vs, fs;
+    ShaderProgram sp;
+
+    Renderer_SphericalBillboard();
+
+    void Render(const std::vector<Sprite3D>& sprites, const RenderState& rs);
+};
+
+struct Renderer_PostFX {
+    Shader         vs, fs;
+    ShaderProgram  sp;
+    FullscreenQuad quad;
+
+    Renderer_PostFX();
+
+    void Render(const TextureRT& src_hdr, const FBO& dst_sdr);
+};
+
 struct Renderer {
-    enum class ShaderType {
-        None  = -1,
-        Point = 0,
-        Spot,
-        Sun,
-        Ambient,
-    };
+    static constexpr f32 CLIP_NEAR = 0.1f;
+    static constexpr f32 CLIP_FAR  = 50.0f;
+
+    // TODO: merge these? maybe not?
+    RenderState rs;
 
     // used in the UBO for cross shader storage
     struct SharedData {
@@ -168,29 +244,14 @@ struct Renderer {
         glm::vec3 pos_view;
     };
 
-    static constexpr usize SHARED_DATA_SIZE = sizeof(SharedData);
-    static constexpr usize SHARED_DATA_SLOT = 0;
-
-    static constexpr usize NUM_LIGHT_SHADERS  = 4; // point, spot, sun, ambient
-    static constexpr usize NUM_SHADOW_SHADERS = 3; // point, spot, sun
-
-    static constexpr f32 SHADOW_OFFSET_FACTOR = 0.025f;
-    static constexpr f32 SHADOW_OFFSET_UNITS  = 1.0f;
-
-    static constexpr f32 CLIP_NEAR = 0.1f;
-    static constexpr f32 CLIP_FAR  = 50.0f;
-
-    ShaderProgram dl_shader[NUM_LIGHT_SHADERS]  = {};
-    ShaderProgram sv_shader[NUM_SHADOW_SHADERS] = {};
-    ShaderProgram sky_shader;
-    ShaderProgram pp_shader;
-    ShaderProgram bb_spherical_shader;
-
-    glm::mat4 mtx_view;
-    glm::mat4 mtx_proj;
-    glm::vec3 pos_view;
-
-    glm::mat4 mtx_vp; // cached by RenderPrepass
+    // render passes
+    Renderer_AmbientLighting    rp_ambient_lighting;
+    Renderer_PointLighting      rp_point_lighting;
+    Renderer_SpotLighting       rp_spot_lighting;
+    Renderer_SunLighting        rp_sun_lighting;
+    Renderer_Skybox             rp_skybox;
+    Renderer_SphericalBillboard rp_spherical_billboard;
+    Renderer_PostFX             rp_postfx;
 
     u32 res_width = 1920, res_height = 1080;
     f32 fov = 90.0f;
@@ -209,8 +270,6 @@ struct Renderer {
         TextureRT color;
     } post;
 
-    FullscreenQuad rt_quad;
-
     Renderer(bool opengl_logging = false);
 
     Renderer& Resolution(u32 width, u32 height);
@@ -222,11 +281,11 @@ struct Renderer {
     Renderer& ClearColor(f32 red, f32 green, f32 blue);
 
     void RenderPrepass();
-    void RenderLighting(const AmbientLight& light, const std::vector<Object>& objs);
-    void RenderLighting(const PointLight& light, const std::vector<Object>& objs);
-    void RenderLighting(const SpotLight& light, const std::vector<Object>& objs);
-    void RenderLighting(const SunLight& light, const std::vector<Object>& objs);
+    void RenderObjectLighting(const AmbientLight& light, const std::vector<Object>& objs);
+    void RenderObjectLighting(const PointLight& light, const std::vector<Object>& objs);
+    void RenderObjectLighting(const SpotLight& light, const std::vector<Object>& objs);
+    void RenderObjectLighting(const SunLight& light, const std::vector<Object>& objs);
     void RenderSkybox(const Skybox& sky);
-    void RenderSprite(const Sprite3D& sprite);
+    void RenderSprite(const std::vector<Sprite3D>& sprites);
     void RenderScreen();
 };

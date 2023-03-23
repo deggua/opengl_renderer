@@ -192,20 +192,6 @@ static void UpdateTime(GLFWwindow* window)
     glfwSetWindowTitle(window, buf);
 }
 
-// TODO: maybe this should go in the Renderer class constructor
-void RenderInit(GLFWwindow* window)
-{
-    (void)window;
-
-    TexturePool.LoadStatic(DefaultTexture_Diffuse, Texture2D(glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
-    TexturePool.LoadStatic(DefaultTexture_Specular, Texture2D(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)));
-    TexturePool.LoadStatic(DefaultTexture_Normal, Texture2D(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f)));
-
-    Random_Seed_HighEntropy();
-
-    GL(glEnable(GL_MULTISAMPLE));
-}
-
 // TODO: need to look into early-z testing, not sure if I need an explicit depth pass or not, but
 // apparently using discard (for the alpha test) effectively disables early-z
 
@@ -217,14 +203,14 @@ void RenderLoop(GLFWwindow* window)
     Skybox   sky = Skybox("assets/tex/sky0");
 
     std::vector<Object> objs = {
-        Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
+        // Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
         // Object("assets/sponza2/sponza.obj").CastsShadows(true),
         // Object("assets/sanmiguel/san-miguel-low-poly.obj").CastsShadows(true),
         // Object("assets/sibenik/sibenik.obj").CastsShadows(true),
         // Object("assets/breakfast/breakfast_room.obj").CastsShadows(true),
         // Object("assets/vokselia/vokselia_spawn.obj").CastsShadows(true).Scale(10.0f),
 
-        // Object("assets/default.obj").CastsShadows(true),
+        Object("assets/default.obj").CastsShadows(true),
     };
 
     AmbientLight ambient_light = AmbientLight(rgb_white, 0.05f);
@@ -244,19 +230,17 @@ void RenderLoop(GLFWwindow* window)
 
         rt.RenderPrepass();
         {
-            rt.RenderLighting(ambient_light, objs);
-            rt.RenderLighting(sun_dupe, objs);
+            rt.RenderObjectLighting(ambient_light, objs);
+            rt.RenderObjectLighting(sun_dupe, objs);
 
             for (const auto& light : point_lights) {
-                rt.RenderLighting(light, objs);
+                rt.RenderObjectLighting(light, objs);
             }
 
-            rt.RenderLighting(sp_dupe, objs);
+            rt.RenderObjectLighting(sp_dupe, objs);
             rt.RenderSkybox(sky);
 
-            for (const auto& sprite : sprites) {
-                rt.RenderSprite(sprite);
-            }
+            rt.RenderSprite(sprites);
         }
         rt.RenderScreen();
 
@@ -307,7 +291,6 @@ int main()
     LOG_INFO("GLFW initialized, starting renderer...");
 
     try {
-        RenderInit(window);
         RenderLoop(window);
     } catch (std::exception e) {
         ABORT("Exception thrown from Renderer: %s", e.what());

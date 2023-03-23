@@ -8,6 +8,7 @@
 
 #include "common.hpp"
 #include "gfx/opengl.hpp"
+#include "math/random.hpp"
 #include "utils/settings.hpp"
 
 SHADER_FILE(Lighting_VS);
@@ -394,35 +395,6 @@ static void APIENTRY OpenGL_Debug_Callback(
         }
     }();
 
-// TODO: write this to a file
-#if 0
-    const auto severity_str = [severity]() {
-        switch (severity) {
-            case GL_DEBUG_SEVERITY_NOTIFICATION:
-                return "NOTIFICATION";
-            case GL_DEBUG_SEVERITY_LOW:
-                return "LOW";
-            case GL_DEBUG_SEVERITY_MEDIUM:
-                return "MEDIUM";
-            case GL_DEBUG_SEVERITY_HIGH:
-                return "HIGH";
-            default:
-                return "???";
-        }
-    }();
-
-    LOG_INFO(
-        "\n\nOpenGL Debug Event:\n"
-        "-----------------\n"
-        "Source:   %s\n"
-        "Type:     %s\n"
-        "Severity: %s\n"
-        "Message:  '%s'\n",
-        src_str,
-        type_str,
-        severity_str,
-        message);
-#else
     if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) {
         LOG_INFO("Source: %s, Type: %s :: %s", src_str, type_str, message);
     } else if (severity == GL_DEBUG_SEVERITY_LOW || severity == GL_DEBUG_SEVERITY_MEDIUM) {
@@ -430,7 +402,6 @@ static void APIENTRY OpenGL_Debug_Callback(
     } else {
         LOG_ERROR("Source: %s, Type: %s :: %s", src_str, type_str, message);
     }
-#endif
 }
 
 static const glm::vec3 skybox_vertices[] = {
@@ -548,155 +519,479 @@ void FullscreenQuad::Draw() const
     GL(glDrawArrays(GL_TRIANGLES, 0, lengthof(fullscreen_quad) / 2));
 }
 
-// Renderer
+static constexpr f32 SHADOW_OFFSET_FACTOR = 0.025f;
+static constexpr f32 SHADOW_OFFSET_UNITS  = 1.0f;
+
+static void SetupDirectLightingPass(LightType light)
+{
+    // depth
+    GL(glEnable(GL_DEPTH_TEST));
+    GL(glDisable(GL_DEPTH_CLAMP));
+    GL(glDepthMask(GL_TRUE));
+    if (light != LightType::Ambient) {
+        GL(glDepthFunc(GL_LEQUAL));
+    } else {
+        GL(glDepthFunc(GL_LESS));
+    }
+
+    // culling
+    GL(glEnable(GL_CULL_FACE));
+    GL(glCullFace(GL_BACK));
+    GL(glFrontFace(GL_CCW));
+
+    // pixel buffer
+    GL(glEnable(GL_BLEND));
+    GL(glBlendEquation(GL_FUNC_ADD));
+    GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+    if (light != LightType::Ambient) {
+        GL(glBlendFunc(GL_ONE, GL_ONE));
+    } else {
+        GL(glBlendFunc(GL_ONE, GL_ZERO));
+    }
+
+    // stencil buffer
+    if (light != LightType::Ambient) {
+        GL(glEnable(GL_STENCIL_TEST));
+        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
+        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
+    } else {
+        GL(glDisable(GL_STENCIL_TEST));
+    }
+
+    // polygon offset
+    GL(glDisable(GL_POLYGON_OFFSET_FILL));
+}
+
+static void SetupShadowLightingPass(LightType light)
+{
+    (void)light;
+
+    // depth
+    GL(glEnable(GL_DEPTH_TEST));
+    GL(glEnable(GL_DEPTH_CLAMP));
+    GL(glDepthMask(GL_FALSE));
+    GL(glDepthFunc(GL_LESS));
+
+    // culling
+    GL(glDisable(GL_CULL_FACE));
+
+    // pixel buffer
+    GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
+
+    // stencil buffer
+    GL(glEnable(GL_STENCIL_TEST));
+    GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
+    GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
+    GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
+
+    // polygon offset
+    GL(glEnable(GL_POLYGON_OFFSET_FILL));
+    GL(glPolygonOffset(SHADOW_OFFSET_FACTOR, SHADOW_OFFSET_UNITS));
+
+    // clear stencil buffer
+    GL(glClear(GL_STENCIL_BUFFER_BIT));
+}
+
+/* --- Renderer_AmbientLighting --- */
+Renderer_AmbientLighting::Renderer_AmbientLighting()
+{
+    LOG_DEBUG("Compiling Ambient Lighting Vertex Shader");
+    this->vs = CompileLightShader(
+        GL_VERTEX_SHADER,
+        LightType::Ambient,
+        Lighting_VS.src,
+        Lighting_VS.len);
+
+    LOG_DEBUG("Compiling Ambient Lighting Fragment Shader");
+    this->fs = CompileLightShader(
+        GL_FRAGMENT_SHADER,
+        LightType::Ambient,
+        Lighting_FS.src,
+        Lighting_FS.len);
+
+    LOG_DEBUG("Linking Ambient Lighting Shaders");
+    this->sp_light = LinkShaders(this->vs, this->fs);
+
+    LOG_DEBUG("Initializing Ambient Lighting Shader Program");
+    this->sp_light.SetUniform("g_material.diffuse", 0);
+    this->sp_light.SetUniform("g_material.specular", 1);
+    this->sp_light.SetUniform("g_material.normal", 2);
+}
+
+void Renderer_AmbientLighting::Render(
+    const AmbientLight&        light,
+    const std::vector<Object>& objs,
+    const RenderState&         rs)
+{
+    SetupDirectLightingPass(LightType::Ambient);
+    this->sp_light.UseProgram();
+    this->sp_light.SetUniform("g_light_source.color", light.color * light.intensity);
+
+    for (const auto& obj : objs) {
+        this->sp_light.SetUniform("g_mtx_world", obj.WorldMatrix());
+        this->sp_light.SetUniform("g_mtx_normal", obj.NormalMatrix());
+        this->sp_light.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
+
+        obj.DrawVisual(this->sp_light);
+    }
+}
+
+/* --- Renderer_PointLighting --- */
+Renderer_PointLighting::Renderer_PointLighting()
+{
+    // direct lighting
+    LOG_DEBUG("Compiling Point Lighting Vertex Shader");
+    this->vs
+        = CompileLightShader(GL_VERTEX_SHADER, LightType::Point, Lighting_VS.src, Lighting_VS.len);
+
+    LOG_DEBUG("Compiling Point Lighting Fragment Shader");
+    this->fs = CompileLightShader(
+        GL_FRAGMENT_SHADER,
+        LightType::Point,
+        Lighting_FS.src,
+        Lighting_FS.len);
+
+    LOG_DEBUG("Linking Point Lighting Shaders");
+    this->sp_light = LinkShaders(this->vs, this->fs);
+
+    LOG_DEBUG("Initializing Point Lighting Shader Program");
+    this->sp_light.SetUniform("g_material.diffuse", 0);
+    this->sp_light.SetUniform("g_material.specular", 1);
+    this->sp_light.SetUniform("g_material.normal", 2);
+
+    // shadow casting
+    LOG_DEBUG("Compiling Point Lighting (Shadows) Vertex Shader");
+    this->vs_shadow = CompileShader(GL_VERTEX_SHADER, ShadowVolume_VS.src, ShadowVolume_VS.len);
+
+    LOG_DEBUG("Compiling Point Lighting (Shadows) Geometry Shader");
+    this->gs_shadow = CompileLightShader(
+        GL_GEOMETRY_SHADER,
+        LightType::Point,
+        ShadowVolume_GS.src,
+        ShadowVolume_GS.len);
+
+    LOG_DEBUG("Compiling Point Lighting (Shadows) Fragment Shader");
+    this->fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
+
+    LOG_DEBUG("Linking Point Lighting (Shadows) Shaders");
+    this->sp_shadow = LinkShaders(this->vs_shadow, this->gs_shadow, this->fs_shadow);
+}
+
+void Renderer_PointLighting::Render(
+    const PointLight&          light,
+    const std::vector<Object>& objs,
+    const RenderState&         rs)
+{
+    SetupShadowLightingPass(LightType::Point);
+    this->sp_shadow.UseProgram();
+    this->sp_shadow.SetUniform("g_light_source.pos", light.pos);
+
+    for (const auto& obj : objs) {
+        if (obj.CastsShadows()) {
+            this->sp_shadow.SetUniform("g_mtx_world", obj.WorldMatrix());
+            this->sp_shadow.SetUniform("g_mtx_normal", obj.NormalMatrix());
+            this->sp_shadow.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
+
+            obj.DrawShadow(this->sp_shadow);
+        }
+    }
+
+    SetupDirectLightingPass(LightType::Point);
+    this->sp_light.UseProgram();
+    this->sp_light.SetUniform("g_light_source.pos", light.pos);
+    this->sp_light.SetUniform("g_light_source.color", light.color * light.intensity);
+
+    for (const auto& obj : objs) {
+        this->sp_light.SetUniform("g_mtx_world", obj.WorldMatrix());
+        this->sp_light.SetUniform("g_mtx_normal", obj.NormalMatrix());
+        this->sp_light.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
+
+        obj.DrawVisual(this->sp_light);
+    }
+}
+
+/* --- Renderer_SpotLighting --- */
+Renderer_SpotLighting::Renderer_SpotLighting()
+{
+    // direct lighting
+    LOG_DEBUG("Compiling Spot Lighting Vertex Shader");
+    this->vs
+        = CompileLightShader(GL_VERTEX_SHADER, LightType::Spot, Lighting_VS.src, Lighting_VS.len);
+
+    LOG_DEBUG("Compiling Spot Lighting Fragment Shader");
+    this->fs
+        = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Spot, Lighting_FS.src, Lighting_FS.len);
+
+    LOG_DEBUG("Linking Spot Lighting Shaders");
+    this->sp_light = LinkShaders(this->vs, this->fs);
+
+    LOG_DEBUG("Initializing Spot Lighting Shader Program");
+    this->sp_light.SetUniform("g_material.diffuse", 0);
+    this->sp_light.SetUniform("g_material.specular", 1);
+    this->sp_light.SetUniform("g_material.normal", 2);
+
+    // shadow casting
+    LOG_DEBUG("Compiling Spot Lighting (Shadows) Vertex Shader");
+    this->vs_shadow = CompileShader(GL_VERTEX_SHADER, ShadowVolume_VS.src, ShadowVolume_VS.len);
+
+    LOG_DEBUG("Compiling Spot Lighting (Shadows) Geometry Shader");
+    this->gs_shadow = CompileLightShader(
+        GL_GEOMETRY_SHADER,
+        LightType::Spot,
+        ShadowVolume_GS.src,
+        ShadowVolume_GS.len);
+
+    LOG_DEBUG("Compiling Spot Lighting (Shadows) Fragment Shader");
+    this->fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
+
+    LOG_DEBUG("Linking Spot Lighting (Shadows) Shaders");
+    this->sp_shadow = LinkShaders(this->vs_shadow, this->gs_shadow, this->fs_shadow);
+}
+
+void Renderer_SpotLighting::Render(
+    const SpotLight&           light,
+    const std::vector<Object>& objs,
+    const RenderState&         rs)
+{
+    SetupShadowLightingPass(LightType::Spot);
+    this->sp_shadow.UseProgram();
+    this->sp_shadow.SetUniform("g_light_source.pos", light.pos);
+    this->sp_shadow.SetUniform("g_light_source.dir", light.dir);
+    this->sp_shadow.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
+    this->sp_shadow.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
+
+    for (const auto& obj : objs) {
+        if (obj.CastsShadows()) {
+            this->sp_shadow.SetUniform("g_mtx_world", obj.WorldMatrix());
+            this->sp_shadow.SetUniform("g_mtx_normal", obj.NormalMatrix());
+            this->sp_shadow.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
+
+            obj.DrawShadow(this->sp_shadow);
+        }
+    }
+
+    SetupDirectLightingPass(LightType::Spot);
+    this->sp_light.UseProgram();
+    this->sp_light.SetUniform("g_light_source.pos", light.pos);
+    this->sp_light.SetUniform("g_light_source.dir", light.dir);
+    this->sp_light.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
+    this->sp_light.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
+    this->sp_light.SetUniform("g_light_source.color", light.color * light.intensity);
+
+    for (const auto& obj : objs) {
+        this->sp_light.SetUniform("g_mtx_world", obj.WorldMatrix());
+        this->sp_light.SetUniform("g_mtx_normal", obj.NormalMatrix());
+        this->sp_light.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
+
+        obj.DrawVisual(this->sp_light);
+    }
+}
+
+/* --- Renderer_SunLighting --- */
+Renderer_SunLighting::Renderer_SunLighting()
+{
+    // direct lighting
+    LOG_DEBUG("Compiling Sun Lighting Vertex Shader");
+    this->vs
+        = CompileLightShader(GL_VERTEX_SHADER, LightType::Sun, Lighting_VS.src, Lighting_VS.len);
+
+    LOG_DEBUG("Compiling Sun Lighting Fragment Shader");
+    this->fs
+        = CompileLightShader(GL_FRAGMENT_SHADER, LightType::Sun, Lighting_FS.src, Lighting_FS.len);
+
+    LOG_DEBUG("Linking Sun Lighting Shaders");
+    this->sp_light = LinkShaders(this->vs, this->fs);
+
+    LOG_DEBUG("Initializing Sun Lighting Shader Program");
+    this->sp_light.SetUniform("g_material.diffuse", 0);
+    this->sp_light.SetUniform("g_material.specular", 1);
+    this->sp_light.SetUniform("g_material.normal", 2);
+
+    // shadow casting
+    LOG_DEBUG("Compiling Sun Lighting (Shadows) Vertex Shader");
+    this->vs_shadow = CompileShader(GL_VERTEX_SHADER, ShadowVolume_VS.src, ShadowVolume_VS.len);
+
+    LOG_DEBUG("Compiling Sun Lighting (Shadows) Geometry Shader");
+    this->gs_shadow = CompileLightShader(
+        GL_GEOMETRY_SHADER,
+        LightType::Sun,
+        ShadowVolume_GS.src,
+        ShadowVolume_GS.len);
+
+    LOG_DEBUG("Compiling Sun Lighting (Shadows) Fragment Shader");
+    this->fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
+
+    LOG_DEBUG("Linking Sun Lighting (Shadows) Shaders");
+    this->sp_shadow = LinkShaders(this->vs_shadow, this->gs_shadow, this->fs_shadow);
+}
+
+void Renderer_SunLighting::Render(
+    const SunLight&            light,
+    const std::vector<Object>& objs,
+    const RenderState&         rs)
+{
+    SetupShadowLightingPass(LightType::Sun);
+    this->sp_shadow.UseProgram();
+    this->sp_shadow.SetUniform("g_light_source.dir", light.dir);
+
+    for (const auto& obj : objs) {
+        if (obj.CastsShadows()) {
+            this->sp_shadow.SetUniform("g_mtx_world", obj.WorldMatrix());
+            this->sp_shadow.SetUniform("g_mtx_normal", obj.NormalMatrix());
+            this->sp_shadow.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
+
+            obj.DrawShadow(this->sp_shadow);
+        }
+    }
+
+    SetupDirectLightingPass(LightType::Sun);
+    this->sp_light.UseProgram();
+    this->sp_light.SetUniform("g_light_source.dir", light.dir);
+    this->sp_light.SetUniform("g_light_source.color", light.color * light.intensity);
+
+    for (const auto& obj : objs) {
+        this->sp_light.SetUniform("g_mtx_world", obj.WorldMatrix());
+        this->sp_light.SetUniform("g_mtx_normal", obj.NormalMatrix());
+        this->sp_light.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
+
+        obj.DrawVisual(this->sp_light);
+    }
+}
+
+/* --- Renderer_Skybox --- */
+Renderer_Skybox::Renderer_Skybox()
+{
+    LOG_DEBUG("Compiling Skybox Vertex Shader");
+    this->vs = CompileShader(GL_VERTEX_SHADER, Skybox_VS.src, Skybox_VS.len);
+
+    LOG_DEBUG("Compiling Skybox Fragment Shader");
+    this->fs = CompileShader(GL_FRAGMENT_SHADER, Skybox_FS.src, Skybox_FS.len);
+
+    LOG_DEBUG("Linking Skybox Shaders");
+    this->sp = LinkShaders(this->vs, this->fs);
+
+    LOG_DEBUG("Initializing Skybox Shader Program");
+    this->sp.SetUniform("g_skybox", 0);
+}
+
+void Renderer_Skybox::Render(const Skybox& sky, const RenderState& rs)
+{
+    // TODO: be more explicit
+    GL(glDisable(GL_BLEND));
+    GL(glDisable(GL_STENCIL_TEST));
+    GL(glDepthFunc(GL_LEQUAL));
+
+    glm::mat4 vp_fixed = rs.mtx_proj * glm::mat4(glm::mat3(rs.mtx_view));
+
+    this->sp.UseProgram();
+    this->sp.SetUniform("g_mtx_vp_fixed", vp_fixed);
+
+    sky.Draw();
+}
+
+/* --- Renderer_SphericalBillboard --- */
+Renderer_SphericalBillboard::Renderer_SphericalBillboard()
+{
+    LOG_DEBUG("Compiling Spherical Billboard Vertex Shader");
+    this->vs
+        = CompileShader(GL_FRAGMENT_SHADER, SphericalBillboard_FS.src, SphericalBillboard_FS.len);
+
+    LOG_DEBUG("Compiling Spherical Billboard Fragment Shader");
+    this->fs
+        = CompileShader(GL_VERTEX_SHADER, SphericalBillboard_VS.src, SphericalBillboard_VS.len);
+
+    LOG_DEBUG("Linking Spherical Billboard Shaders");
+    this->sp = LinkShaders(this->vs, this->fs);
+
+    LOG_DEBUG("Initializing Spherical Billboard Shader Program");
+    this->sp.SetUniform("g_sprite", 0);
+}
+
+// TODO: cleanup naming, should be something like SphericalBillboard3D
+// fixed size regardless of distance should be SphericalBillboard2D, etc.
+// TODO: some sprites may be emissive (light flares), others may not be (smoke), needs better
+// handling
+void Renderer_SphericalBillboard::Render(
+    const std::vector<Sprite3D>& sprites,
+    const RenderState&           rs)
+{
+    // TODO: be more explicit
+    GL(glEnable(GL_BLEND));
+    GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE));
+    GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+
+    GL(glEnable(GL_CULL_FACE));
+
+    GL(glEnable(GL_DEPTH_TEST));
+    GL(glDepthMask(GL_FALSE));
+    GL(glDepthFunc(GL_LESS));
+
+    GL(glDisable(GL_STENCIL_TEST));
+
+    this->sp.UseProgram();
+    for (const auto& sprite : sprites) {
+        // TODO: why not apply the matrix fixup here?
+        this->sp.SetUniform("g_mtx_wv", rs.mtx_view * sprite.WorldMatrix());
+        this->sp.SetUniform("g_scale", sprite.Scale());
+        this->sp.SetUniform("g_intensity", sprite.Intensity());
+        this->sp.SetUniform("g_tint", sprite.Tint());
+
+        sprite.Draw(this->sp);
+    }
+
+    // TODO: this shouldn't be required, other passes should be explicit about the depth mask
+    GL(glDepthMask(GL_TRUE));
+}
+
+/* --- Renderer_PostFX --- */
+Renderer_PostFX::Renderer_PostFX()
+{
+    LOG_DEBUG("Compiling PostFX Vertex Shader");
+    this->vs = CompileShader(GL_VERTEX_SHADER, Postprocess_VS.src, Postprocess_VS.len);
+
+    LOG_DEBUG("Compiling PostFX Fragment Shader");
+    this->fs = CompileShader(GL_FRAGMENT_SHADER, Postprocess_FS.src, Postprocess_FS.len);
+
+    LOG_DEBUG("Linking PostFX Shaders");
+    this->sp = LinkShaders(this->vs, this->fs);
+
+    LOG_DEBUG("Initializing PostFX Shader Program");
+    this->sp.SetUniform("g_screen", 0);
+}
+
+// TODO: make gamma parameter
+void Renderer_PostFX::Render(const TextureRT& src_hdr, const FBO& dst_sdr)
+{
+    dst_sdr.Bind();
+
+    GL(glDisable(GL_DEPTH_TEST));
+    GL(glDisable(GL_BLEND));
+    GL(glDisable(GL_STENCIL_TEST));
+    GL(glClear(GL_COLOR_BUFFER_BIT));
+
+    this->sp.UseProgram();
+    this->sp.SetUniform("g_gamma", 2.2f);
+
+    src_hdr.Bind();
+    this->quad.Draw();
+}
+
+/* --- Renderer --- */
+static void RenderInit(void)
+{
+    TexturePool.LoadStatic(DefaultTexture_Diffuse, Texture2D(glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
+    TexturePool.LoadStatic(DefaultTexture_Specular, Texture2D(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)));
+    TexturePool.LoadStatic(DefaultTexture_Normal, Texture2D(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f)));
+
+    Random_Seed_HighEntropy();
+
+    GL(glEnable(GL_MULTISAMPLE));
+}
+
 Renderer::Renderer(bool opengl_logging)
 {
-    // Lighting
-    Shader vs_light_ambient, vs_light_spot, vs_light_sun, vs_light_point;
-    Shader fs_light_ambient, fs_light_spot, fs_light_sun, fs_light_point;
-    {
-        LOG_INFO("Compiling 'Lighting_VS.glsl' for Ambient lights");
-        vs_light_ambient = CompileLightShader(
-            GL_VERTEX_SHADER,
-            LightType::Ambient,
-            Lighting_VS.src,
-            Lighting_VS.len);
-
-        LOG_INFO("Compiling 'Lighting_VS.glsl' for Spot lights");
-        vs_light_spot = CompileLightShader(
-            GL_VERTEX_SHADER,
-            LightType::Spot,
-            Lighting_VS.src,
-            Lighting_VS.len);
-
-        LOG_INFO("Compiling 'Lighting_VS.glsl' for Sun lights");
-        vs_light_sun = CompileLightShader(
-            GL_VERTEX_SHADER,
-            LightType::Sun,
-            Lighting_VS.src,
-            Lighting_VS.len);
-
-        LOG_INFO("Compiling 'Lighting_VS.glsl' for Point lights");
-        vs_light_point = CompileLightShader(
-            GL_VERTEX_SHADER,
-            LightType::Point,
-            Lighting_VS.src,
-            Lighting_VS.len);
-
-        LOG_INFO("Compiling 'Lighting_FS.glsl' for Ambient lights");
-        fs_light_ambient = CompileLightShader(
-            GL_FRAGMENT_SHADER,
-            LightType::Ambient,
-            Lighting_FS.src,
-            Lighting_FS.len);
-
-        LOG_INFO("Compiling 'Lighting_FS.glsl' for Point lights");
-        fs_light_point = CompileLightShader(
-            GL_FRAGMENT_SHADER,
-            LightType::Point,
-            Lighting_FS.src,
-            Lighting_FS.len);
-
-        LOG_INFO("Compiling 'Lighting_FS.glsl' for Spot lights");
-        fs_light_spot = CompileLightShader(
-            GL_FRAGMENT_SHADER,
-            LightType::Spot,
-            Lighting_FS.src,
-            Lighting_FS.len);
-
-        LOG_INFO("Compiling 'Lighting_FS.glsl' for Sun lights");
-        fs_light_sun = CompileLightShader(
-            GL_FRAGMENT_SHADER,
-            LightType::Sun,
-            Lighting_FS.src,
-            Lighting_FS.len);
-    }
-
-    // Shadows
-    Shader vs_shadow;
-    Shader gs_shadow_point, gs_shadow_spot, gs_shadow_sun;
-    Shader fs_shadow;
-    {
-        LOG_INFO("Compiling 'ShadowVolume_VS.glsl'");
-        vs_shadow = CompileShader(GL_VERTEX_SHADER, ShadowVolume_VS.src, ShadowVolume_VS.len);
-
-        LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Point lights");
-        gs_shadow_point = CompileLightShader(
-            GL_GEOMETRY_SHADER,
-            LightType::Point,
-            ShadowVolume_GS.src,
-            ShadowVolume_GS.len);
-
-        LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Spot lights");
-        gs_shadow_spot = CompileLightShader(
-            GL_GEOMETRY_SHADER,
-            LightType::Spot,
-            ShadowVolume_GS.src,
-            ShadowVolume_GS.len);
-
-        LOG_INFO("Compiling 'ShadowVolume_GS.glsl' for Sun lights");
-        gs_shadow_sun = CompileLightShader(
-            GL_GEOMETRY_SHADER,
-            LightType::Sun,
-            ShadowVolume_GS.src,
-            ShadowVolume_GS.len);
-
-        LOG_INFO("Compiling 'ShadowVolume_FS.glsl'");
-        fs_shadow = CompileShader(GL_FRAGMENT_SHADER, ShadowVolume_FS.src, ShadowVolume_FS.len);
-    }
-
-    // Other
-    Shader vs_skybox, fs_skybox;
-    Shader vs_postprocess, fs_postprocess;
-    Shader fs_spherical_bb, vs_spherical_bb;
-    {
-        LOG_INFO("Compiling 'Skybox_VS.glsl'");
-        vs_skybox = CompileShader(GL_VERTEX_SHADER, Skybox_VS.src, Skybox_VS.len);
-        LOG_INFO("Compiling 'Skybox_FS.glsl'");
-        fs_skybox = CompileShader(GL_FRAGMENT_SHADER, Skybox_FS.src, Skybox_FS.len);
-
-        LOG_INFO("Compiling 'Postprocess_VS.glsl'");
-        vs_postprocess = CompileShader(GL_VERTEX_SHADER, Postprocess_VS.src, Postprocess_VS.len);
-        LOG_INFO("Compiling 'Postprocess_FS.glsl'");
-        fs_postprocess = CompileShader(GL_FRAGMENT_SHADER, Postprocess_FS.src, Postprocess_FS.len);
-
-        LOG_INFO("Compiling 'SphericalBillboard_FS.glsl'");
-        fs_spherical_bb = CompileShader(
-            GL_FRAGMENT_SHADER,
-            SphericalBillboard_FS.src,
-            SphericalBillboard_FS.len);
-        LOG_INFO("Compiling 'SphericalBillboard_VS.glsl");
-        vs_spherical_bb
-            = CompileShader(GL_VERTEX_SHADER, SphericalBillboard_VS.src, SphericalBillboard_VS.len);
-    }
-
-    this->dl_shader[(usize)ShaderType::Ambient] = LinkShaders(vs_light_ambient, fs_light_ambient);
-    this->dl_shader[(usize)ShaderType::Point]   = LinkShaders(vs_light_point, fs_light_point);
-    this->dl_shader[(usize)ShaderType::Spot]    = LinkShaders(vs_light_spot, fs_light_spot);
-    this->dl_shader[(usize)ShaderType::Sun]     = LinkShaders(vs_light_sun, fs_light_sun);
-
-    this->sv_shader[(usize)ShaderType::Point] = LinkShaders(vs_shadow, gs_shadow_point, fs_shadow);
-    this->sv_shader[(usize)ShaderType::Spot]  = LinkShaders(vs_shadow, gs_shadow_spot, fs_shadow);
-    this->sv_shader[(usize)ShaderType::Sun]   = LinkShaders(vs_shadow, gs_shadow_sun, fs_shadow);
-
-    this->sky_shader          = LinkShaders(vs_skybox, fs_skybox);
-    this->pp_shader           = LinkShaders(vs_postprocess, fs_postprocess);
-    this->bb_spherical_shader = LinkShaders(vs_spherical_bb, fs_spherical_bb);
-
-    // setup texture indices in shaders that use them
-    // TODO: might need different handling if more textures of each type are enabled
-    // TODO: using a UBO might be better but we only pay this cost once at startup
-    for (ShaderProgram& sp : this->dl_shader) {
-        sp.SetUniform("g_material.diffuse", 0);
-        sp.SetUniform("g_material.specular", 1);
-        sp.SetUniform("g_material.normal", 2);
-    }
-
-    this->sky_shader.SetUniform("g_skybox", 0);
-
-    this->pp_shader.SetUniform("g_screen", 0);
-
-    this->bb_spherical_shader.SetUniform("g_sprite", 0);
+    // exterior render initialization
+    RenderInit();
 
     // setup internal render target for MSAA
     this->msaa.fbo.Reserve();
@@ -709,7 +1004,7 @@ Renderer::Renderer(bool opengl_logging)
         this->res_width,
         this->res_height);
     this->msaa.color
-        .CreateStorage(GL_RGB16F, settings.msaa_samples, this->res_width, this->res_height);
+        .CreateStorage(GL_R11F_G11F_B10F, settings.msaa_samples, this->res_width, this->res_height);
 
     this->msaa.fbo.Attach(this->msaa.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
     this->msaa.fbo.Attach(this->msaa.color, GL_COLOR_ATTACHMENT0);
@@ -722,15 +1017,15 @@ Renderer::Renderer(bool opengl_logging)
 
     this->post.depth_stencil
         .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
-    this->post.color.Setup(GL_RGB16F, this->res_width, this->res_height);
+    this->post.color.Setup(GL_R11F_G11F_B10F, this->res_width, this->res_height);
 
     this->post.fbo.Attach(this->post.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
     this->post.fbo.Attach(this->post.color, GL_COLOR_ATTACHMENT0);
     ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
     // setup the shared UBO
-    this->shared_data.Reserve(SHARED_DATA_SIZE);
-    this->shared_data.BindSlot(SHARED_DATA_SLOT);
+    this->shared_data.Reserve(sizeof(SharedData));
+    this->shared_data.BindSlot(0);
 
     // TODO: synchronous is slow, not that big of an issue for now
     // TODO: this functionality doesn't exist in OpenGL 3.3
@@ -763,11 +1058,11 @@ Renderer& Renderer::Resolution(u32 width, u32 height)
         this->res_width,
         this->res_height);
     this->msaa.color
-        .CreateStorage(GL_RGB16F, settings.msaa_samples, this->res_width, this->res_height);
+        .CreateStorage(GL_R11F_G11F_B10F, settings.msaa_samples, this->res_width, this->res_height);
 
     this->post.depth_stencil
         .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
-    this->post.color.Setup(GL_RGB16F, this->res_width, this->res_height);
+    this->post.color.Setup(GL_R11F_G11F_B10F, this->res_width, this->res_height);
 
     GL(glViewport(0, 0, width, height));
 
@@ -782,13 +1077,13 @@ Renderer& Renderer::FOV(f32 new_fov)
 
 Renderer& Renderer::ViewPosition(const glm::vec3& pos)
 {
-    this->pos_view = pos;
+    this->rs.pos_view = pos;
     return *this;
 }
 
 Renderer& Renderer::ViewMatrix(const glm::mat4& mtx)
 {
-    this->mtx_view = mtx;
+    this->rs.mtx_view = mtx;
     return *this;
 }
 
@@ -803,17 +1098,17 @@ void Renderer::RenderPrepass()
     // cache the VP matrix for this render pass
     f32       aspect   = (f32)res_width / (f32)res_height;
     glm::mat4 mtx_proj = glm::perspective(glm::radians(this->fov), aspect, CLIP_NEAR, CLIP_FAR);
-    this->mtx_proj     = mtx_proj;
-    this->mtx_vp       = mtx_proj * this->mtx_view;
+    this->rs.mtx_proj  = mtx_proj;
+    this->rs.mtx_vp    = mtx_proj * this->rs.mtx_view;
 
     // Update UBO for VP matrix and View Position
     SharedData tmp = {
-        this->mtx_vp,
-        this->mtx_view,
-        this->mtx_proj,
-        this->pos_view,
+        this->rs.mtx_vp,
+        this->rs.mtx_view,
+        this->rs.mtx_proj,
+        this->rs.pos_view,
     };
-    this->shared_data.SubData(0, SHARED_DATA_SIZE, &tmp);
+    this->shared_data.SubData(0, sizeof(SharedData), &tmp);
 
     // bind the internal frame target and clear the screen
     this->msaa.fbo.Bind();
@@ -822,331 +1117,41 @@ void Renderer::RenderPrepass()
 
 // TODO: there should be a better way to organize these, they're very similar
 
-void Renderer::RenderLighting(const AmbientLight& light, const std::vector<Object>& objs)
+void Renderer::RenderObjectLighting(const AmbientLight& light, const std::vector<Object>& objs)
 {
-    // depth
-    GL(glEnable(GL_DEPTH_TEST));
-    GL(glDisable(GL_DEPTH_CLAMP));
-    GL(glDepthMask(GL_TRUE));
-    GL(glDepthFunc(GL_LESS));
-
-    // culling
-    GL(glEnable(GL_CULL_FACE));
-    GL(glCullFace(GL_BACK));
-    GL(glFrontFace(GL_CCW));
-
-    // pixel buffer
-    GL(glEnable(GL_BLEND));
-    GL(glBlendEquation(GL_FUNC_ADD));
-    GL(glBlendFunc(GL_ONE, GL_ZERO));
-    GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
-
-    // stencil buffer
-    GL(glDisable(GL_STENCIL_TEST));
-
-    ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Ambient];
-    sp.UseProgram();
-    sp.SetUniform("g_light_source.color", light.color * light.intensity);
-
-    for (const auto& obj : objs) {
-        // object parameters
-        sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-        sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
-        sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
-
-        obj.DrawVisual(sp);
-    }
+    this->rp_ambient_lighting.Render(light, objs, this->rs);
 }
 
-void Renderer::RenderLighting(const PointLight& light, const std::vector<Object>& objs)
+void Renderer::RenderObjectLighting(const PointLight& light, const std::vector<Object>& objs)
 {
-    /* Stencil Shadow Volume Pass*/
-    {
-        // depth
-        GL(glEnable(GL_DEPTH_TEST));
-        GL(glEnable(GL_DEPTH_CLAMP));
-        GL(glDepthMask(GL_FALSE));
-        GL(glDepthFunc(GL_LESS));
-
-        // culling
-        GL(glDisable(GL_CULL_FACE));
-
-        // pixel buffer
-        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
-
-        // stencil buffer
-        GL(glEnable(GL_STENCIL_TEST));
-        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
-        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
-        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
-
-        GL(glEnable(GL_POLYGON_OFFSET_FILL));
-        GL(glPolygonOffset(SHADOW_OFFSET_FACTOR, SHADOW_OFFSET_UNITS));
-
-        ShaderProgram& sp = this->sv_shader[(usize)ShaderType::Point];
-        sp.UseProgram();
-        sp.SetUniform("g_light_source.pos", light.pos);
-
-        for (const auto& obj : objs) {
-            if (obj.CastsShadows()) {
-                sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-                sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
-                sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
-
-                obj.DrawShadow(sp);
-            }
-        }
-    }
-
-    /* Pixel Lighting Calculation Pass */
-    {
-        // depth
-        GL(glEnable(GL_DEPTH_TEST));
-        GL(glDisable(GL_DEPTH_CLAMP));
-        GL(glDepthMask(GL_TRUE));
-        GL(glDepthFunc(GL_LEQUAL));
-
-        // culling
-        GL(glEnable(GL_CULL_FACE));
-
-        // pixel buffer
-        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
-        GL(glBlendFunc(GL_ONE, GL_ONE));
-
-        // stencil buffer
-        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
-        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
-
-        GL(glDisable(GL_POLYGON_OFFSET_FILL));
-
-        ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Point];
-        sp.UseProgram();
-        sp.SetUniform("g_light_source.pos", light.pos);
-        sp.SetUniform("g_light_source.color", light.color * light.intensity);
-
-        for (const auto& obj : objs) {
-            // object parameters
-            sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-            sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
-            sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
-
-            obj.DrawVisual(sp);
-        }
-    }
-
-    // clear the stencil buffer once we're done
-    GL(glClear(GL_STENCIL_BUFFER_BIT));
+    this->rp_point_lighting.Render(light, objs, this->rs);
 }
 
-void Renderer::RenderLighting(const SpotLight& light, const std::vector<Object>& objs)
+void Renderer::RenderObjectLighting(const SpotLight& light, const std::vector<Object>& objs)
 {
-    /* Stencil Shadow Volume Pass*/
-    {
-        // depth
-        GL(glEnable(GL_DEPTH_TEST));
-        GL(glEnable(GL_DEPTH_CLAMP));
-        GL(glDepthMask(GL_FALSE));
-        GL(glDepthFunc(GL_LESS));
-
-        // culling
-        GL(glDisable(GL_CULL_FACE));
-
-        // pixel buffer
-        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
-
-        // stencil buffer
-        GL(glEnable(GL_STENCIL_TEST));
-        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
-        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
-        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
-
-        GL(glEnable(GL_POLYGON_OFFSET_FILL));
-        GL(glPolygonOffset(SHADOW_OFFSET_FACTOR, SHADOW_OFFSET_UNITS));
-
-        ShaderProgram& sp = this->sv_shader[(usize)ShaderType::Spot];
-        sp.UseProgram();
-        sp.SetUniform("g_light_source.pos", light.pos);
-        sp.SetUniform("g_light_source.dir", light.dir);
-        sp.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
-        sp.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
-
-        for (const auto& obj : objs) {
-            if (obj.CastsShadows()) {
-                sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-                sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
-                sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
-
-                obj.DrawShadow(sp);
-            }
-        }
-    }
-
-    /* Pixel Lighting Calculation Pass */
-    {
-        // depth
-        GL(glEnable(GL_DEPTH_TEST));
-        GL(glDisable(GL_DEPTH_CLAMP));
-        GL(glDepthMask(GL_TRUE));
-        GL(glDepthFunc(GL_LEQUAL));
-
-        // culling
-        GL(glEnable(GL_CULL_FACE));
-
-        // pixel buffer
-        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
-        GL(glBlendFunc(GL_ONE, GL_ONE));
-
-        // stencil buffer
-        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
-        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
-
-        GL(glDisable(GL_POLYGON_OFFSET_FILL));
-
-        ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Spot];
-        sp.UseProgram();
-        sp.SetUniform("g_light_source.pos", light.pos);
-        sp.SetUniform("g_light_source.dir", light.dir);
-        sp.SetUniform("g_light_source.inner_cutoff", light.inner_cutoff);
-        sp.SetUniform("g_light_source.outer_cutoff", light.outer_cutoff);
-        sp.SetUniform("g_light_source.color", light.color * light.intensity);
-
-        for (const auto& obj : objs) {
-            sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-            sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
-            sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
-
-            obj.DrawVisual(sp);
-        }
-    }
-
-    // clear the stencil buffer once we're done
-    GL(glClear(GL_STENCIL_BUFFER_BIT));
+    this->rp_spot_lighting.Render(light, objs, this->rs);
 }
 
-void Renderer::RenderLighting(const SunLight& light, const std::vector<Object>& objs)
+void Renderer::RenderObjectLighting(const SunLight& light, const std::vector<Object>& objs)
 {
-    /* Stencil Shadow Volume Pass*/
-    {
-        // depth
-        GL(glEnable(GL_DEPTH_TEST));
-        GL(glEnable(GL_DEPTH_CLAMP));
-        GL(glDepthMask(GL_FALSE));
-        GL(glDepthFunc(GL_LESS));
-
-        // culling
-        GL(glDisable(GL_CULL_FACE));
-
-        // pixel buffer
-        GL(glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
-
-        // stencil buffer
-        GL(glEnable(GL_STENCIL_TEST));
-        GL(glStencilFunc(GL_ALWAYS, 0, 0xFF));
-        GL(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP));
-        GL(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP));
-
-        // offset shadows in Z
-        GL(glEnable(GL_POLYGON_OFFSET_FILL));
-        GL(glPolygonOffset(SHADOW_OFFSET_FACTOR, SHADOW_OFFSET_UNITS));
-
-        ShaderProgram& sp = this->sv_shader[(usize)ShaderType::Sun];
-        sp.UseProgram();
-        sp.SetUniform("g_light_source.dir", light.dir);
-
-        for (const auto& obj : objs) {
-            if (obj.CastsShadows()) {
-                sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-                sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
-                sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
-
-                obj.DrawShadow(sp);
-            }
-        }
-    }
-
-    /* Pixel Lighting Calculation Pass */
-    {
-        // depth
-        GL(glEnable(GL_DEPTH_TEST));
-        GL(glDisable(GL_DEPTH_CLAMP));
-        GL(glDepthMask(GL_TRUE));
-        GL(glDepthFunc(GL_LEQUAL));
-
-        // culling
-        GL(glEnable(GL_CULL_FACE));
-
-        // pixel buffer
-        GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
-        GL(glBlendFunc(GL_ONE, GL_ONE));
-
-        // stencil buffer
-        GL(glStencilFunc(GL_EQUAL, 0x0, 0xFF));
-        GL(glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
-
-        // disable offset in Z
-        GL(glDisable(GL_POLYGON_OFFSET_FILL));
-
-        ShaderProgram& sp = this->dl_shader[(usize)ShaderType::Sun];
-        sp.UseProgram();
-        sp.SetUniform("g_light_source.dir", light.dir);
-        sp.SetUniform("g_light_source.color", light.color * light.intensity);
-
-        for (const auto& obj : objs) {
-            sp.SetUniform("g_mtx_world", obj.WorldMatrix());
-            sp.SetUniform("g_mtx_normal", obj.NormalMatrix());
-            sp.SetUniform("g_mtx_wvp", this->mtx_vp * obj.WorldMatrix());
-
-            obj.DrawVisual(sp);
-        }
-    }
-
-    // clear the stencil buffer once we're done
-    GL(glClear(GL_STENCIL_BUFFER_BIT));
+    this->rp_sun_lighting.Render(light, objs, this->rs);
 }
 
 void Renderer::RenderSkybox(const Skybox& sky)
 {
-    GL(glDisable(GL_BLEND));
-    GL(glDisable(GL_STENCIL_TEST));
-    GL(glDepthFunc(GL_LEQUAL));
-
-    glm::mat4 vp_fixed = this->mtx_proj * glm::mat4(glm::mat3(this->mtx_view));
-
-    ShaderProgram& sp = this->sky_shader;
-    sp.UseProgram();
-    sp.SetUniform("g_mtx_vp_fixed", vp_fixed);
-
-    sky.Draw();
+    this->rp_skybox.Render(sky, this->rs);
 }
 
-// TODO: some sprites may be emissive (light flares), others may not be (smoke)
-void Renderer::RenderSprite(const Sprite3D& sprite)
+// TODO: naming
+void Renderer::RenderSprite(const std::vector<Sprite3D>& sprites)
 {
-    GL(glEnable(GL_BLEND));
-    GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE));
-    GL(glEnable(GL_DEPTH_TEST));
-    GL(glDepthMask(GL_FALSE));
-    GL(glDepthFunc(GL_LESS));
-    GL(glDisable(GL_STENCIL_TEST));
-    GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
-    GL(glEnable(GL_CULL_FACE));
-
-    ShaderProgram& sp = this->bb_spherical_shader;
-    sp.UseProgram();
-    sp.SetUniform("g_mtx_wv", this->mtx_view * sprite.WorldMatrix());
-
-    sp.SetUniform("g_scale", sprite.Scale());
-    sp.SetUniform("g_intensity", sprite.Intensity());
-    sp.SetUniform("g_tint", sprite.Tint());
-
-    sprite.Draw(sp);
-
-    GL(glDepthMask(GL_TRUE));
+    this->rp_spherical_billboard.Render(sprites, this->rs);
 }
 
+// TODO: should gamma be a parameter to this function, or part of the renderer's state?
 void Renderer::RenderScreen()
 {
-    // blit the MSAA FBO to the post FBO
+    // blit the MSAA FBO to the PostFX FBO
     GL(glBindFramebuffer(GL_READ_FRAMEBUFFER, this->msaa.fbo.handle));
     GL(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, this->post.fbo.handle));
     GL(glBlitFramebuffer(
@@ -1161,17 +1166,6 @@ void Renderer::RenderScreen()
         GL_COLOR_BUFFER_BIT,
         GL_NEAREST));
 
-    // now render to the default framebuffer using the post FBO's texture
-    GL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
-    GL(glDisable(GL_DEPTH_TEST));
-    GL(glDisable(GL_BLEND));
-    GL(glDisable(GL_STENCIL_TEST));
-    GL(glClear(GL_COLOR_BUFFER_BIT));
-
-    ShaderProgram& sp = this->pp_shader;
-    sp.UseProgram();
-    sp.SetUniform("g_gamma", 2.2f);
-
-    this->post.color.Bind();
-    this->rt_quad.Draw();
+    FBO default_fbo = FBO();
+    this->rp_postfx.Render(this->post.color, default_fbo);
 }

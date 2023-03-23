@@ -29,3 +29,19 @@ static inline glm::quat quat_RotationBetweenVectors(const glm::vec3& start, cons
 
     return glm::quat(s * 0.5f, rot_axis.x * invs, rot_axis.y * invs, rot_axis.z * invs);
 }
+
+// Project U onto V
+static inline glm::vec3 Project(const glm::vec3& u, const glm::vec3& v)
+{
+    return v * glm::dot(u, v) / glm::dot(v, v);
+}
+
+static inline glm::mat3
+Orthonormal_GramSchmidt(const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& v3)
+{
+    glm::vec3 u1 = v1;
+    glm::vec3 u2 = v2 - Project(v2, u1);
+    glm::vec3 u3 = v3 - Project(v3, u1) - Project(v3, u2);
+
+    return glm::mat3(glm::normalize(u1), glm::normalize(u2), glm::normalize(u3));
+}

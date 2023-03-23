@@ -466,7 +466,8 @@ void FBO::Delete()
 
 void FBO::Bind() const
 {
-    ASSERT(this->handle != 0);
+    // TODO: the default FBO (handle = 0) is actually the default FBO object
+    // ASSERT(this->handle != 0);
     GL(glBindFramebuffer(GL_FRAMEBUFFER, this->handle));
 }
 

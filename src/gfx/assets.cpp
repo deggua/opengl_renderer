@@ -95,6 +95,11 @@ struct std::hash<Face> {
     }
 };
 
+static glm::vec3 ConvertVector(const aiVector3D& vec)
+{
+    return {vec.x, vec.y, vec.z};
+}
+
 static GLuint
 UniqueIndex(std::unordered_map<aiVector3D, GLuint>& vtx_map, const aiMesh& mesh, GLuint pot_index)
 {
@@ -218,25 +223,16 @@ Geometry::Geometry(const aiMesh& mesh)
     // collect vertex positions, normals, tex coords
     std::vector<Vertex> vertices = {};
     for (size_t ii = 0; ii < mesh.mNumVertices; ii++) {
-        glm::vec3 normal  = {mesh.mNormals[ii].x, mesh.mNormals[ii].y, mesh.mNormals[ii].z};
-        glm::vec3 tangent = {mesh.mTangents[ii].x, mesh.mTangents[ii].y, mesh.mTangents[ii].z};
-        glm::vec3 bitangent_mesh
-            = {mesh.mBitangents[ii].x, mesh.mBitangents[ii].y, mesh.mBitangents[ii].z};
-
-        // Gramm-Schmidt orthonormalization
-        tangent = glm::normalize(tangent - glm::dot(tangent, normal) * normal);
-        // compute the bitangent, avoids non-orthonormal issue
-        glm::vec3 bitangent = glm::cross(normal, tangent);
-        // flip bitangent if direction doesn't agree with the mesh's
-        if (glm::dot(bitangent_mesh, bitangent) < 0.0f) {
-            bitangent *= -1.0f;
-        }
+        glm::mat3 tangent_space_basis = Orthonormal_GramSchmidt(
+            ConvertVector(mesh.mNormals[ii]),
+            ConvertVector(mesh.mTangents[ii]),
+            ConvertVector(mesh.mBitangents[ii]));
 
         Vertex vert = Vertex{
-            {mesh.mVertices[ii].x, mesh.mVertices[ii].y, mesh.mVertices[ii].z},
-            normal,
-            tangent,
-            bitangent,
+            ConvertVector(mesh.mVertices[ii]),
+            tangent_space_basis[0],
+            tangent_space_basis[1],
+            tangent_space_basis[2],
             {0.0f, 0.0f},
         };
 
