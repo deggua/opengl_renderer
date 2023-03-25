@@ -144,8 +144,9 @@ struct Skybox {
 };
 
 struct FullscreenQuad {
-    VAO vao;
-    VBO vbo;
+    static VAO  vao;
+    static VBO  vbo;
+    static bool is_vao_initialized;
 
     FullscreenQuad();
     void Draw() const;
@@ -229,6 +230,34 @@ struct Renderer_PostFX {
     void Render(const TextureRT& src_hdr, const FBO& dst_sdr);
 };
 
+struct Renderer_Bloom {
+    static constexpr f32   BLOOM_RADIUS        = 0.005f;
+    static constexpr f32   BLOOM_STRENGTH      = 0.04f;
+    static constexpr isize BLOOM_MIP_CHAIN_LEN = 5;
+
+    ShaderProgram sp_upscale, sp_downscale, sp_final;
+
+    glm::vec2 input_res;
+
+    struct {
+        glm::vec2 res;
+        TextureRT tex;
+    } mips[BLOOM_MIP_CHAIN_LEN];
+
+    Shader vs, fs_upscale, fs_downscale, fs_final;
+
+    FBO fbo;
+
+    FullscreenQuad quad;
+
+    bool mips_setup = false;
+
+    Renderer_Bloom();
+
+    void SetResolution(f32 width, f32 height);
+    void Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 radius, f32 strength);
+};
+
 struct Renderer {
     static constexpr f32 CLIP_NEAR = 0.1f;
     static constexpr f32 CLIP_FAR  = 50.0f;
@@ -251,6 +280,7 @@ struct Renderer {
     Renderer_SunLighting        rp_sun_lighting;
     Renderer_Skybox             rp_skybox;
     Renderer_SphericalBillboard rp_spherical_billboard;
+    Renderer_Bloom              rp_bloom;
     Renderer_PostFX             rp_postfx;
 
     u32 res_width = 1920, res_height = 1080;
@@ -288,4 +318,5 @@ struct Renderer {
     void RenderSkybox(const Skybox& sky);
     void RenderSprite(const std::vector<Sprite3D>& sprites);
     void RenderScreen();
+    void RenderBloom();
 };

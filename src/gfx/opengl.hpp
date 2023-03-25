@@ -223,6 +223,7 @@ struct FBO : Handle<GLuint> {
     // GL_FRAMEBUFFER)
     void Attach(RBO rbo, GLenum attachment) const;
     void Attach(TextureRT tex_rt, GLenum attachment) const;
+    void CheckComplete() const;
 };
 
 template<class... Ts, class = std::enable_if_t<std::conjunction_v<std::is_same<Shader, Ts>...>>>

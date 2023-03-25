@@ -124,14 +124,19 @@ vec3 ComputeSpecularLight(
     return energy_factor * light_color * frag_specular * specular_intensity * cos_term;
 }
 
+float distance2(vec3 v1, vec3 v2)
+{
+    vec3 tmp = v1 - v2;
+    return dot(tmp, tmp);
+}
+
 // Inverse square falloff
 float ComputeLightFalloff(vec3 light_pos, vec3 frag_pos)
 {
-    // TODO: distance2 would be better
-    float frag2light_dist = distance(light_pos, frag_pos);
+    float frag2light_dist2 = distance2(light_pos, frag_pos);
 
     float falloff = 1.0;
-    falloff /= 1.0 + frag2light_dist * frag2light_dist;
+    falloff /= 1.0 + frag2light_dist2;
 
     return falloff;
 }

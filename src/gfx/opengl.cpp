@@ -178,9 +178,11 @@ void TextureRT::Setup(GLenum format, GLsizei width, GLsizei height)
 {
     ASSERT(this->handle != 0);
     this->Bind();
-    GL(glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr));
+    GL(glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, GL_RGB, GL_FLOAT, nullptr));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
 }
 
 /* --- TextureCubemap --- */
@@ -489,4 +491,11 @@ void FBO::Attach(TextureRT tex_rt, GLenum attachment) const
     ASSERT(this->handle != 0);
     this->Bind();
     GL(glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, tex_rt.handle, 0));
+}
+
+void FBO::CheckComplete() const
+{
+    ASSERT(this->handle != 0);
+    this->Bind();
+    ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 }

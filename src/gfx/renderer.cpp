@@ -22,6 +22,10 @@ SHADER_FILE(Postprocess_FS);
 SHADER_FILE(Postprocess_VS);
 SHADER_FILE(SphericalBillboard_FS);
 SHADER_FILE(SphericalBillboard_VS);
+SHADER_FILE(Bloom_VS);
+SHADER_FILE(BloomDownsample_FS);
+SHADER_FILE(BloomUpsample_FS);
+SHADER_FILE(BloomFinal_FS);
 
 struct String {
     size_t      len;
@@ -482,6 +486,7 @@ void Skybox::Draw() const
     GL(glDrawArrays(GL_TRIANGLES, 0, lengthof(skybox_vertices)));
 }
 
+/* --- FullscreenQuad --- */
 static const glm::vec2 fullscreen_quad[] = {
   // positions   // texCoords
     {-1.0f,  1.0f},
@@ -499,8 +504,16 @@ static const glm::vec2 fullscreen_quad[] = {
     { 1.0f,  1.0f}
 };
 
+bool FullscreenQuad::is_vao_initialized = false;
+VAO  FullscreenQuad::vao;
+VBO  FullscreenQuad::vbo;
+
 FullscreenQuad::FullscreenQuad()
 {
+    if (is_vao_initialized) {
+        return;
+    }
+
     this->vao.Reserve();
     this->vbo.Reserve();
 
@@ -510,7 +523,7 @@ FullscreenQuad::FullscreenQuad()
     this->vao.SetAttribute(0, 2, GL_FLOAT, 2 * sizeof(glm::vec2), 0);
     this->vao.SetAttribute(1, 2, GL_FLOAT, 2 * sizeof(glm::vec2), sizeof(glm::vec2));
 
-    LOG_INFO("FullscreenQuad constructed");
+    this->is_vao_initialized = true;
 }
 
 void FullscreenQuad::Draw() const
@@ -943,6 +956,142 @@ void Renderer_SphericalBillboard::Render(
     GL(glDepthMask(GL_TRUE));
 }
 
+/* --- Renderer_Bloom --- */
+Renderer_Bloom::Renderer_Bloom()
+{
+    LOG_DEBUG("Compiling Bloom Vertex Shader");
+    this->vs = CompileShader(GL_VERTEX_SHADER, Bloom_VS.src, Bloom_VS.len);
+
+    LOG_DEBUG("Compiling Bloom Upscale Fragment Shader");
+    this->fs_upscale
+        = CompileShader(GL_FRAGMENT_SHADER, BloomUpsample_FS.src, BloomUpsample_FS.len);
+
+    LOG_DEBUG("Linking Bloom Upscale Shaders");
+    this->sp_upscale = LinkShaders(this->vs, this->fs_upscale);
+
+    LOG_DEBUG("Initializng Bloom Upscale Shader Program");
+    this->sp_upscale.SetUniform("g_tex_input", 0);
+    this->sp_upscale.SetUniform("g_radius", BLOOM_RADIUS);
+
+    LOG_DEBUG("Compiling Bloom Downscale Fragment Shader");
+    this->fs_downscale
+        = CompileShader(GL_FRAGMENT_SHADER, BloomDownsample_FS.src, BloomDownsample_FS.len);
+
+    LOG_DEBUG("Linking Bloom Downscale Shaders");
+    this->sp_downscale = LinkShaders(this->vs, this->fs_downscale);
+
+    LOG_DEBUG("Initializing Bloom Downscale Shader Program");
+    this->sp_downscale.SetUniform("g_tex_input", 0);
+    this->sp_downscale.SetUniform("g_resolution", glm::vec2(0, 0));
+
+    LOG_DEBUG("Compiling Bloom Final Fragment Shader");
+    this->fs_final = CompileShader(GL_FRAGMENT_SHADER, BloomFinal_FS.src, BloomFinal_FS.len);
+
+    LOG_DEBUG("Linking Bloom Final Shaders");
+    this->sp_final = LinkShaders(this->vs, this->fs_final);
+
+    LOG_DEBUG("Initializing Bloom Final Shader Program");
+    this->sp_final.SetUniform("g_tex_hdr", 0);
+    this->sp_final.SetUniform("g_tex_bloom", 1);
+    this->sp_final.SetUniform("g_bloom_strength", 0.04f);
+
+    LOG_DEBUG("Creating Bloom FBO");
+    this->fbo.Reserve();
+}
+
+void Renderer_Bloom::SetResolution(f32 width, f32 height)
+{
+    this->input_res = {width, height};
+    glm::vec2 res   = {width, height};
+    for (usize ii = 0; ii < BLOOM_MIP_CHAIN_LEN; ii++) {
+        if (this->mips_setup) {
+            this->mips[ii].tex.Delete();
+        }
+
+        res *= 0.5f;
+        this->mips[ii].tex.Reserve();
+        this->mips[ii].tex.Setup(GL_R11F_G11F_B10F, (GLsizei)res.x, (GLsizei)res.y);
+        this->mips[ii].res = res;
+    }
+
+    this->fbo.Attach(this->mips[0].tex, GL_COLOR_ATTACHMENT0);
+    this->fbo.CheckComplete();
+
+    this->mips_setup = true;
+}
+
+void Renderer_Bloom::Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 radius, f32 strength)
+{
+    GL(glDisable(GL_DEPTH_TEST));
+
+    GL(glEnable(GL_BLEND));
+    GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE));
+    GL(glBlendFunc(GL_ONE, GL_ZERO));
+    GL(glBlendEquation(GL_FUNC_ADD));
+
+    GL(glDisable(GL_STENCIL_TEST));
+
+    // src_hdr is the input texture for first iteration of downsample
+    GL(glActiveTexture(GL_TEXTURE0));
+    src_hdr.Bind();
+
+    // internal FBO is the output target until the final upscale stage
+    this->fbo.Bind();
+
+    this->sp_downscale.UseProgram();
+    this->sp_downscale.SetUniform("g_resolution", this->input_res);
+
+    // downsample passes
+    for (isize ii = 0; ii < BLOOM_MIP_CHAIN_LEN; ii++) {
+        // color attachment is the mip target, clear it before rendering to it
+        GL(glViewport(0, 0, (GLsizei)this->mips[ii].res.x, (GLsizei)this->mips[ii].res.y));
+        this->fbo.Attach(this->mips[ii].tex, GL_COLOR_ATTACHMENT0);
+        GL(glClearColor(0.0f, 0.0f, 0.0f, 1.0f));
+        GL(glClear(GL_COLOR_BUFFER_BIT));
+
+        this->quad.Draw();
+
+        // for next iter
+        // input res is this stage's res
+        this->sp_downscale.SetUniform("g_resolution", this->mips[ii].res);
+        // input texture is this stage's tex
+        this->mips[ii].tex.Bind();
+    }
+
+    // now we upsample and additively blend backwards
+    GL(glBlendFunc(GL_ONE, GL_ONE));
+
+    this->sp_upscale.UseProgram();
+    this->sp_upscale.SetUniform("g_radius", radius);
+
+    // upsample passes
+    for (isize ii = BLOOM_MIP_CHAIN_LEN - 1; ii > 0; ii--) {
+        this->mips[ii].tex.Bind();
+        GL(glViewport(0, 0, (GLsizei)this->mips[ii - 1].res.x, (GLsizei)this->mips[ii - 1].res.y));
+        this->fbo.Attach(this->mips[ii - 1].tex, GL_COLOR_ATTACHMENT0);
+
+        this->quad.Draw();
+    }
+
+    // final pass takes the highest res mip and mixes it with the input image and writes to the
+    // output FBO
+    GL(glBlendFunc(GL_ONE, GL_ZERO));
+
+    GL(glViewport(0, 0, (GLsizei)this->input_res.x, (GLsizei)this->input_res.y));
+    GL(glActiveTexture(GL_TEXTURE0));
+    src_hdr.Bind();
+
+    GL(glActiveTexture(GL_TEXTURE1));
+    this->mips[0].tex.Bind();
+
+    this->sp_final.UseProgram();
+    this->sp_final.SetUniform("g_bloom_strength", strength);
+
+    dst_hdr.Bind();
+
+    this->quad.Draw();
+}
+
 /* --- Renderer_PostFX --- */
 Renderer_PostFX::Renderer_PostFX()
 {
@@ -980,7 +1129,7 @@ void Renderer_PostFX::Render(const TextureRT& src_hdr, const FBO& dst_sdr)
 static void RenderInit(void)
 {
     TexturePool.LoadStatic(DefaultTexture_Diffuse, Texture2D(glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
-    TexturePool.LoadStatic(DefaultTexture_Specular, Texture2D(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)));
+    TexturePool.LoadStatic(DefaultTexture_Specular, Texture2D(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)));
     TexturePool.LoadStatic(DefaultTexture_Normal, Texture2D(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f)));
 
     Random_Seed_HighEntropy();
@@ -990,6 +1139,21 @@ static void RenderInit(void)
 
 Renderer::Renderer(bool opengl_logging)
 {
+    // TODO: synchronous is slow, not that big of an issue for now
+    // TODO: this functionality doesn't exist in OpenGL 3.3
+    if (opengl_logging) {
+        GL(glEnable(GL_DEBUG_OUTPUT));
+        GL(glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS));
+        GL(glDebugMessageCallback(OpenGL_Debug_Callback, nullptr));
+        GL(glDebugMessageControl(
+            GL_DONT_CARE,
+            GL_DONT_CARE,
+            GL_DEBUG_SEVERITY_NOTIFICATION,
+            0,
+            nullptr,
+            GL_FALSE));
+    }
+
     // exterior render initialization
     RenderInit();
 
@@ -1008,7 +1172,7 @@ Renderer::Renderer(bool opengl_logging)
 
     this->msaa.fbo.Attach(this->msaa.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
     this->msaa.fbo.Attach(this->msaa.color, GL_COLOR_ATTACHMENT0);
-    ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+    this->msaa.fbo.CheckComplete();
 
     // setup internal render target for postprocessing
     this->post.fbo.Reserve();
@@ -1021,26 +1185,14 @@ Renderer::Renderer(bool opengl_logging)
 
     this->post.fbo.Attach(this->post.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
     this->post.fbo.Attach(this->post.color, GL_COLOR_ATTACHMENT0);
-    ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+    this->post.fbo.CheckComplete();
 
     // setup the shared UBO
     this->shared_data.Reserve(sizeof(SharedData));
     this->shared_data.BindSlot(0);
 
-    // TODO: synchronous is slow, not that big of an issue for now
-    // TODO: this functionality doesn't exist in OpenGL 3.3
-    if (opengl_logging) {
-        GL(glEnable(GL_DEBUG_OUTPUT));
-        GL(glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS));
-        GL(glDebugMessageCallback(OpenGL_Debug_Callback, nullptr));
-        GL(glDebugMessageControl(
-            GL_DONT_CARE,
-            GL_DONT_CARE,
-            GL_DEBUG_SEVERITY_NOTIFICATION,
-            0,
-            nullptr,
-            GL_FALSE));
-    }
+    // initial bloom setup
+    this->rp_bloom.SetResolution(this->res_width, this->res_height);
 }
 
 Renderer& Renderer::Resolution(u32 width, u32 height)
@@ -1063,6 +1215,8 @@ Renderer& Renderer::Resolution(u32 width, u32 height)
     this->post.depth_stencil
         .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
     this->post.color.Setup(GL_R11F_G11F_B10F, this->res_width, this->res_height);
+
+    this->rp_bloom.SetResolution(width, height);
 
     GL(glViewport(0, 0, width, height));
 
@@ -1148,10 +1302,9 @@ void Renderer::RenderSprite(const std::vector<Sprite3D>& sprites)
     this->rp_spherical_billboard.Render(sprites, this->rs);
 }
 
-// TODO: should gamma be a parameter to this function, or part of the renderer's state?
-void Renderer::RenderScreen()
+void Renderer::RenderBloom()
 {
-    // blit the MSAA FBO to the PostFX FBO
+    // blit the MSAA FBO to the single sample FBO
     GL(glBindFramebuffer(GL_READ_FRAMEBUFFER, this->msaa.fbo.handle));
     GL(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, this->post.fbo.handle));
     GL(glBlitFramebuffer(
@@ -1166,6 +1319,13 @@ void Renderer::RenderScreen()
         GL_COLOR_BUFFER_BIT,
         GL_NEAREST));
 
+    // TODO: this might not work, I think reading/writing to our own color buffer would break stuff
+    this->rp_bloom.Render(this->post.color, this->post.fbo, 0.005f, 0.04f);
+}
+
+// TODO: should gamma be a parameter to this function, or part of the renderer's state?
+void Renderer::RenderScreen()
+{
     FBO default_fbo = FBO();
     this->rp_postfx.Render(this->post.color, default_fbo);
 }

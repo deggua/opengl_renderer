@@ -102,9 +102,9 @@ struct Object {
 
 // TODO: maybe we should have two subtypes: EmissiveSprite3D and DiffuseSprite3D
 struct Sprite3D {
-    static bool is_vao_initialized;
     static VAO  vao;
     static VBO  vbo;
+    static bool is_vao_initialized;
 
     Texture2D* sprite;
     glm::vec3  scale     = {1.0f, 1.0f, 1.0f};

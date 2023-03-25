@@ -149,7 +149,7 @@ static void ProcessMouseButtonInput(GLFWwindow* window, int button, int action, 
                               .Position(g_Camera.pos)
                               .Tint(light_color)
                               .Scale(0.3f)
-                              .Intensity(1.0f));
+                              .Intensity(10.0f));
     }
 }
 
@@ -203,14 +203,14 @@ void RenderLoop(GLFWwindow* window)
     Skybox   sky = Skybox("assets/tex/sky0");
 
     std::vector<Object> objs = {
-        // Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
+        Object("assets/sponza/sponza.obj").CastsShadows(true).Scale(0.01f),
         // Object("assets/sponza2/sponza.obj").CastsShadows(true),
         // Object("assets/sanmiguel/san-miguel-low-poly.obj").CastsShadows(true),
         // Object("assets/sibenik/sibenik.obj").CastsShadows(true),
         // Object("assets/breakfast/breakfast_room.obj").CastsShadows(true),
         // Object("assets/vokselia/vokselia_spawn.obj").CastsShadows(true).Scale(10.0f),
 
-        Object("assets/default.obj").CastsShadows(true),
+        // Object("assets/default.obj").CastsShadows(true),
     };
 
     AmbientLight ambient_light = AmbientLight(rgb_white, 0.05f);
@@ -242,6 +242,7 @@ void RenderLoop(GLFWwindow* window)
 
             rt.RenderSprite(sprites);
         }
+        rt.RenderBloom();
         rt.RenderScreen();
 
         glfwSwapBuffers(window);

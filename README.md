@@ -12,24 +12,25 @@
 * Skyboxes
 * HDR Tonemapping
 * Normal maps
+* Bloom
 
 ## TODO:
 * Shadow optimizations
 * Cubemap reflections
-* Bloom
 * Animations
 * Particle effects
 * Fog
 * UI/Text
 * Linux support (currently only tested on Windows)
+* Volumetric fog
+* Volumetric light shafts
 
 ## Might be implemented eventually:
 * SSAO
 * SMAA
 * DOF
 * Soft stencil shadows (probably requires TAA or some form of temporal accumulation)
-* Shadow maps
-* Planar shadows
+* Cascaded shadow maps
 * Parallax maps
 * Tesselation
 * LOD/billboards
