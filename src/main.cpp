@@ -45,6 +45,8 @@ f32 g_t  = 0.0f;
 u32 g_res_w = 1920;
 u32 g_res_h = 1080;
 
+f32 g_sharpening_strength = 1.0f;
+
 u32 g_res_w_old = g_res_w;
 u32 g_res_h_old = g_res_h;
 
@@ -82,6 +84,19 @@ static void ProcessKeyboardInput(GLFWwindow* window)
     }
     if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
         dir_move -= dir_up;
+    }
+    static auto last_f_key_state = GLFW_RELEASE;
+    if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS && last_f_key_state == GLFW_RELEASE) {
+        if (g_sharpening_strength == 0.0f) {
+            g_sharpening_strength = 1.0f;
+            LOG_DEBUG("Setting sharpening to %f", g_sharpening_strength);
+        } else {
+            g_sharpening_strength = 0.0f;
+            LOG_DEBUG("Setting sharpening to %f", g_sharpening_strength);
+        }
+        last_f_key_state = GLFW_PRESS;
+    } else if (glfwGetKey(window, GLFW_KEY_F) == GLFW_RELEASE && last_f_key_state == GLFW_PRESS) {
+        last_f_key_state = GLFW_RELEASE;
     }
 
     if (length(dir_move) > 0.1f) {
@@ -228,7 +243,7 @@ void RenderLoop(GLFWwindow* window)
         rt.ViewPosition(cam.pos);
         rt.ViewMatrix(cam.ViewMatrix());
 
-        rt.RenderPrepass();
+        rt.StartRender();
         {
             rt.RenderObjectLighting(ambient_light, objs);
             rt.RenderObjectLighting(sun_dupe, objs);
@@ -242,8 +257,15 @@ void RenderLoop(GLFWwindow* window)
 
             rt.RenderSprite(sprites);
         }
-        rt.RenderBloom();
-        rt.RenderScreen();
+        rt.FinishGeometry();
+
+        rt.RenderBloom(0.005f, 0.04f);
+        rt.RenderTonemap(Renderer_PostFX::TONEMAP_ACES_APPROX);
+        if (g_sharpening_strength != 0.0f) {
+            rt.RenderSharpening(g_sharpening_strength);
+        }
+
+        rt.FinishRender(2.2f);
 
         glfwSwapBuffers(window);
         glfwPollEvents();

@@ -221,13 +221,20 @@ struct Renderer_SphericalBillboard {
 };
 
 struct Renderer_PostFX {
-    Shader         vs, fs;
-    ShaderProgram  sp;
+    Shader         vs, fs_sharpen, fs_gamma, fs_tonemap;
+    ShaderProgram  sp_sharpen, sp_gamma, sp_tonemap;
     FullscreenQuad quad;
+
+    // NOTE: must match the tonemap shader
+    static constexpr GLuint TONEMAP_REINHARD    = 0;
+    static constexpr GLuint TONEMAP_ACES_APPROX = 1;
 
     Renderer_PostFX();
 
-    void Render(const TextureRT& src_hdr, const FBO& dst_sdr);
+    void RenderTonemap(const TextureRT& src_hdr, const FBO& dst_sdr, GLuint tonemapper);
+    void
+    RenderSharpen(const TextureRT& src, const FBO& dst, glm::vec2 screen_resolution, f32 strength);
+    void RenderGammaCorrect(const TextureRT& src_hdr, const FBO& dst_sdr, f32 gamma);
 };
 
 struct Renderer_Bloom {
@@ -273,6 +280,18 @@ struct Renderer {
         glm::vec3 pos_view;
     };
 
+    struct MSAA_RT {
+        FBO fbo;
+        RBO depth_stencil;
+        RBO color;
+    };
+
+    struct Simple_RT {
+        FBO       fbo;
+        RBO       depth_stencil;
+        TextureRT color;
+    };
+
     // render passes
     Renderer_AmbientLighting    rp_ambient_lighting;
     Renderer_PointLighting      rp_point_lighting;
@@ -288,17 +307,10 @@ struct Renderer {
 
     UBO shared_data;
 
-    struct {
-        FBO fbo;
-        RBO depth_stencil;
-        RBO color;
-    } msaa;
-
-    struct {
-        FBO       fbo;
-        RBO       depth_stencil;
-        TextureRT color;
-    } post;
+    // Render FBOs
+    MSAA_RT   msaa;
+    Simple_RT post[2]; // TODO: this should probably just swap out the color attachment
+    usize     post_target = 0;
 
     Renderer(bool opengl_logging = false);
 
@@ -310,13 +322,27 @@ struct Renderer {
 
     Renderer& ClearColor(f32 red, f32 green, f32 blue);
 
-    void RenderPrepass();
+    Simple_RT& GetRenderTarget();
+    Simple_RT& GetRenderSource();
+    void       AdvanceRenderTarget();
+
+    // Rendering methods
+    void StartRender();
+
     void RenderObjectLighting(const AmbientLight& light, const std::vector<Object>& objs);
     void RenderObjectLighting(const PointLight& light, const std::vector<Object>& objs);
     void RenderObjectLighting(const SpotLight& light, const std::vector<Object>& objs);
     void RenderObjectLighting(const SunLight& light, const std::vector<Object>& objs);
     void RenderSkybox(const Skybox& sky);
     void RenderSprite(const std::vector<Sprite3D>& sprites);
-    void RenderScreen();
-    void RenderBloom();
+
+    // TODO: Need to make it more clear that you have to call this function before calling any of
+    // the functions below
+    void FinishGeometry();
+
+    void RenderBloom(f32 radius, f32 strength);
+    void RenderTonemap(GLuint tonemapper);
+    void RenderSharpening(f32 strength);
+
+    void FinishRender(f32 gamma);
 };

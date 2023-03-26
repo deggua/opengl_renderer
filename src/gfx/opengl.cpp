@@ -10,6 +10,8 @@
 #include "common.hpp"
 #include "utils/settings.hpp"
 
+// TODO: Texture binds should take the active texture as an argument
+
 Shader CompileShader(GLenum shader_type, GLsizei count, const GLchar** src, const GLint* len)
 {
     ASSERT(count > 0);

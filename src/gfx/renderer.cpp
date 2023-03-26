@@ -18,8 +18,10 @@ SHADER_FILE(ShadowVolume_FS);
 SHADER_FILE(ShadowVolume_GS);
 SHADER_FILE(Skybox_FS);
 SHADER_FILE(Skybox_VS);
-SHADER_FILE(PostFX_FS);
 SHADER_FILE(PostFX_VS);
+SHADER_FILE(PostFX_Sharpen_FS);
+SHADER_FILE(PostFX_Gamma_FS);
+SHADER_FILE(PostFX_Tonemap_FS);
 SHADER_FILE(SphericalBillboard_FS);
 SHADER_FILE(SphericalBillboard_VS);
 SHADER_FILE(Bloom_VS);
@@ -1112,31 +1114,95 @@ Renderer_PostFX::Renderer_PostFX()
     LOG_DEBUG("Compiling PostFX Vertex Shader");
     this->vs = CompileShader(GL_VERTEX_SHADER, PostFX_VS.src, PostFX_VS.len);
 
-    LOG_DEBUG("Compiling PostFX Fragment Shader");
-    this->fs = CompileShader(GL_FRAGMENT_SHADER, PostFX_FS.src, PostFX_FS.len);
+    // Sharpening
+    LOG_DEBUG("Compiling PostFX Sharpen Fragment Shader");
+    this->fs_sharpen
+        = CompileShader(GL_FRAGMENT_SHADER, PostFX_Sharpen_FS.src, PostFX_Sharpen_FS.len);
 
-    LOG_DEBUG("Linking PostFX Shaders");
-    this->sp = LinkShaders(this->vs, this->fs);
-    LOG_DEBUG("PostFX Shader Program = %u", this->sp.handle);
+    LOG_DEBUG("Linking PostFX Sharpen Shaders");
+    this->sp_sharpen = LinkShaders(this->vs, this->fs_sharpen);
+    LOG_DEBUG("PostFX Sharpen Shader Program = %u", this->sp_sharpen.handle);
+
+    LOG_DEBUG("Initializing PostFX Sharpen Shader Program");
+    this->sp_sharpen.SetUniform("g_screen", 0);
+
+    // Gamma correction
+    LOG_DEBUG("Compiling PostFX Gamma Fragment Shader");
+    this->fs_gamma = CompileShader(GL_FRAGMENT_SHADER, PostFX_Gamma_FS.src, PostFX_Gamma_FS.len);
+
+    LOG_DEBUG("Linking PostFX Gamma Shaders");
+    this->sp_gamma = LinkShaders(this->vs, this->fs_gamma);
+    LOG_DEBUG("PostFX Gamma Shader Program = %u", this->sp_gamma.handle);
+
+    LOG_DEBUG("Initializing PostFX Gamma Shader Program");
+    this->sp_gamma.SetUniform("g_screen", 0);
+
+    // Tonemapping
+    LOG_DEBUG("Compiling PostFX Tonemap Fragment Shader");
+    this->fs_tonemap
+        = CompileShader(GL_FRAGMENT_SHADER, PostFX_Tonemap_FS.src, PostFX_Tonemap_FS.len);
+
+    LOG_DEBUG("Linking PostFX Tonemapping Shaders");
+    this->sp_tonemap = LinkShaders(this->vs, this->fs_tonemap);
+    LOG_DEBUG("PostFX Tonemapping Program = %u", this->sp_tonemap.handle);
 
     LOG_DEBUG("Initializing PostFX Shader Program");
-    this->sp.SetUniform("g_screen", 0);
+    this->sp_tonemap.SetUniform("g_screen", 0);
 }
 
-// TODO: make gamma parameter
-void Renderer_PostFX::Render(const TextureRT& src_hdr, const FBO& dst_sdr)
+void Renderer_PostFX::RenderTonemap(const TextureRT& src, const FBO& dst, GLuint tonemapper)
 {
-    dst_sdr.Bind();
+    dst.Bind();
 
     GL(glDisable(GL_DEPTH_TEST));
     GL(glDisable(GL_BLEND));
     GL(glDisable(GL_STENCIL_TEST));
     GL(glClear(GL_COLOR_BUFFER_BIT));
 
-    this->sp.UseProgram();
-    this->sp.SetUniform("g_gamma", 2.2f);
+    this->sp_tonemap.UseProgram();
+    this->sp_tonemap.SetUniform("g_tonemapper", tonemapper);
 
-    src_hdr.Bind();
+    GL(glActiveTexture(GL_TEXTURE0));
+    src.Bind();
+    this->quad.Draw();
+}
+
+void Renderer_PostFX::RenderSharpen(
+    const TextureRT& src,
+    const FBO&       dst,
+    glm::vec2        screen_resolution,
+    f32              strength)
+{
+    dst.Bind();
+
+    GL(glDisable(GL_DEPTH_TEST));
+    GL(glDisable(GL_BLEND));
+    GL(glDisable(GL_STENCIL_TEST));
+    GL(glClear(GL_COLOR_BUFFER_BIT));
+
+    this->sp_sharpen.UseProgram();
+    this->sp_sharpen.SetUniform("g_resolution", screen_resolution);
+    this->sp_sharpen.SetUniform("g_strength", strength);
+
+    GL(glActiveTexture(GL_TEXTURE0));
+    src.Bind();
+    this->quad.Draw();
+}
+
+void Renderer_PostFX::RenderGammaCorrect(const TextureRT& src, const FBO& dst, f32 gamma)
+{
+    dst.Bind();
+
+    GL(glDisable(GL_DEPTH_TEST));
+    GL(glDisable(GL_BLEND));
+    GL(glDisable(GL_STENCIL_TEST));
+    GL(glClear(GL_COLOR_BUFFER_BIT));
+
+    this->sp_gamma.UseProgram();
+    this->sp_gamma.SetUniform("g_gamma", gamma);
+
+    GL(glActiveTexture(GL_TEXTURE0));
+    src.Bind();
     this->quad.Draw();
 }
 
@@ -1190,17 +1256,19 @@ Renderer::Renderer(bool opengl_logging)
     this->msaa.fbo.CheckComplete();
 
     // setup internal render target for postprocessing
-    this->post.fbo.Reserve();
-    this->post.depth_stencil.Reserve();
-    this->post.color.Reserve();
+    for (usize ii = 0; ii < lengthof(this->post); ii++) {
+        this->post[ii].fbo.Reserve();
+        this->post[ii].depth_stencil.Reserve();
 
-    this->post.depth_stencil
-        .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
-    this->post.color.Setup(GL_R11F_G11F_B10F, this->res_width, this->res_height);
+        this->post[ii].color.Reserve();
+        this->post[ii]
+            .depth_stencil.CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
+        this->post[ii].color.Setup(GL_R11F_G11F_B10F, this->res_width, this->res_height);
 
-    this->post.fbo.Attach(this->post.depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
-    this->post.fbo.Attach(this->post.color, GL_COLOR_ATTACHMENT0);
-    this->post.fbo.CheckComplete();
+        this->post[ii].fbo.Attach(this->post[ii].depth_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
+        this->post[ii].fbo.Attach(this->post[ii].color, GL_COLOR_ATTACHMENT0);
+        this->post[ii].fbo.CheckComplete();
+    }
 
     // setup the shared UBO
     this->shared_data.Reserve(sizeof(SharedData));
@@ -1208,6 +1276,21 @@ Renderer::Renderer(bool opengl_logging)
 
     // initial bloom setup
     this->rp_bloom.SetResolution(this->res_width, this->res_height);
+}
+
+Renderer::Simple_RT& Renderer::GetRenderSource()
+{
+    return this->post[(this->post_target + 1) % lengthof(post)];
+}
+
+Renderer::Simple_RT& Renderer::GetRenderTarget()
+{
+    return this->post[this->post_target];
+}
+
+void Renderer::AdvanceRenderTarget()
+{
+    this->post_target = (this->post_target + 1) % lengthof(post);
 }
 
 Renderer& Renderer::Resolution(u32 width, u32 height)
@@ -1224,12 +1307,12 @@ Renderer& Renderer::Resolution(u32 width, u32 height)
         settings.msaa_samples,
         this->res_width,
         this->res_height);
-    this->msaa.color
-        .CreateStorage(GL_R11F_G11F_B10F, settings.msaa_samples, this->res_width, this->res_height);
+    this->msaa.color.CreateStorage(GL_R11F_G11F_B10F, settings.msaa_samples, width, height);
 
-    this->post.depth_stencil
-        .CreateStorage(GL_DEPTH24_STENCIL8, 1, this->res_width, this->res_height);
-    this->post.color.Setup(GL_R11F_G11F_B10F, this->res_width, this->res_height);
+    for (usize ii = 0; ii < lengthof(this->post); ii++) {
+        this->post[ii].depth_stencil.CreateStorage(GL_DEPTH24_STENCIL8, 1, width, height);
+        this->post[ii].color.Setup(GL_R11F_G11F_B10F, width, height);
+    }
 
     this->rp_bloom.SetResolution(width, height);
 
@@ -1262,7 +1345,7 @@ Renderer& Renderer::ClearColor(f32 red, f32 green, f32 blue)
     return *this;
 }
 
-void Renderer::RenderPrepass()
+void Renderer::StartRender()
 {
     // cache the VP matrix for this render pass
     f32       aspect   = (f32)res_width / (f32)res_height;
@@ -1317,11 +1400,11 @@ void Renderer::RenderSprite(const std::vector<Sprite3D>& sprites)
     this->rp_spherical_billboard.Render(sprites, this->rs);
 }
 
-void Renderer::RenderBloom()
+void Renderer::FinishGeometry()
 {
     // blit the MSAA FBO to the single sample FBO
     GL(glBindFramebuffer(GL_READ_FRAMEBUFFER, this->msaa.fbo.handle));
-    GL(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, this->post.fbo.handle));
+    GL(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, this->GetRenderTarget().fbo.handle));
     GL(glBlitFramebuffer(
         0,
         0,
@@ -1334,13 +1417,41 @@ void Renderer::RenderBloom()
         GL_COLOR_BUFFER_BIT,
         GL_NEAREST));
 
-    // TODO: this might not work, I think reading/writing to our own color buffer would break stuff
-    this->rp_bloom.Render(this->post.color, this->post.fbo, 0.005f, 0.04f);
+    this->AdvanceRenderTarget();
+}
+
+void Renderer::RenderBloom(f32 radius, f32 strength)
+{
+    Simple_RT& src = this->GetRenderSource();
+    Simple_RT& dst = this->GetRenderTarget();
+    this->rp_bloom.Render(src.color, dst.fbo, radius, strength);
+
+    this->AdvanceRenderTarget();
+}
+
+void Renderer::RenderTonemap(GLuint tonemapper)
+{
+    Simple_RT& src = this->GetRenderSource();
+    Simple_RT& dst = this->GetRenderTarget();
+    this->rp_postfx.RenderTonemap(src.color, dst.fbo, tonemapper);
+
+    this->AdvanceRenderTarget();
+}
+
+void Renderer::RenderSharpening(f32 strength)
+{
+    Simple_RT& src = this->GetRenderSource();
+    Simple_RT& dst = this->GetRenderTarget();
+    this->rp_postfx
+        .RenderSharpen(src.color, dst.fbo, {this->res_width, this->res_height}, strength);
+
+    this->AdvanceRenderTarget();
 }
 
 // TODO: should gamma be a parameter to this function, or part of the renderer's state?
-void Renderer::RenderScreen()
+void Renderer::FinishRender(f32 gamma)
 {
-    FBO default_fbo = FBO();
-    this->rp_postfx.Render(this->post.color, default_fbo);
+    FBO        default_fbo = FBO();
+    Simple_RT& src         = this->GetRenderSource();
+    this->rp_postfx.RenderGammaCorrect(src.color, default_fbo, gamma);
 }
