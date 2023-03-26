@@ -18,8 +18,8 @@ SHADER_FILE(ShadowVolume_FS);
 SHADER_FILE(ShadowVolume_GS);
 SHADER_FILE(Skybox_FS);
 SHADER_FILE(Skybox_VS);
-SHADER_FILE(Postprocess_FS);
-SHADER_FILE(Postprocess_VS);
+SHADER_FILE(PostFX_FS);
+SHADER_FILE(PostFX_VS);
 SHADER_FILE(SphericalBillboard_FS);
 SHADER_FILE(SphericalBillboard_VS);
 SHADER_FILE(Bloom_VS);
@@ -624,6 +624,7 @@ Renderer_AmbientLighting::Renderer_AmbientLighting()
 
     LOG_DEBUG("Linking Ambient Lighting Shaders");
     this->sp_light = LinkShaders(this->vs, this->fs);
+    LOG_DEBUG("Ambient Lighting Shader Program = %u", this->sp_light.handle);
 
     LOG_DEBUG("Initializing Ambient Lighting Shader Program");
     this->sp_light.SetUniform("g_material.diffuse", 0);
@@ -666,6 +667,7 @@ Renderer_PointLighting::Renderer_PointLighting()
 
     LOG_DEBUG("Linking Point Lighting Shaders");
     this->sp_light = LinkShaders(this->vs, this->fs);
+    LOG_DEBUG("Point Lighting Shader Program = %u", this->sp_light.handle);
 
     LOG_DEBUG("Initializing Point Lighting Shader Program");
     this->sp_light.SetUniform("g_material.diffuse", 0);
@@ -688,6 +690,7 @@ Renderer_PointLighting::Renderer_PointLighting()
 
     LOG_DEBUG("Linking Point Lighting (Shadows) Shaders");
     this->sp_shadow = LinkShaders(this->vs_shadow, this->gs_shadow, this->fs_shadow);
+    LOG_DEBUG("Point Lighting (Shadows) Shader Program = %u", this->sp_shadow.handle);
 }
 
 void Renderer_PointLighting::Render(
@@ -737,6 +740,7 @@ Renderer_SpotLighting::Renderer_SpotLighting()
 
     LOG_DEBUG("Linking Spot Lighting Shaders");
     this->sp_light = LinkShaders(this->vs, this->fs);
+    LOG_DEBUG("Spot Lighting Shader Program = %u", this->sp_light.handle);
 
     LOG_DEBUG("Initializing Spot Lighting Shader Program");
     this->sp_light.SetUniform("g_material.diffuse", 0);
@@ -759,6 +763,7 @@ Renderer_SpotLighting::Renderer_SpotLighting()
 
     LOG_DEBUG("Linking Spot Lighting (Shadows) Shaders");
     this->sp_shadow = LinkShaders(this->vs_shadow, this->gs_shadow, this->fs_shadow);
+    LOG_DEBUG("Spot Lighting (Shadows) Shader Program = %u", this->sp_shadow.handle);
 }
 
 void Renderer_SpotLighting::Render(
@@ -814,6 +819,7 @@ Renderer_SunLighting::Renderer_SunLighting()
 
     LOG_DEBUG("Linking Sun Lighting Shaders");
     this->sp_light = LinkShaders(this->vs, this->fs);
+    LOG_DEBUG("Sun Lighting Shader Program = %u", this->sp_light.handle);
 
     LOG_DEBUG("Initializing Sun Lighting Shader Program");
     this->sp_light.SetUniform("g_material.diffuse", 0);
@@ -836,6 +842,7 @@ Renderer_SunLighting::Renderer_SunLighting()
 
     LOG_DEBUG("Linking Sun Lighting (Shadows) Shaders");
     this->sp_shadow = LinkShaders(this->vs_shadow, this->gs_shadow, this->fs_shadow);
+    LOG_DEBUG("Sun Lighting (Shadows) Shader Program = %u", this->sp_shadow.handle);
 }
 
 void Renderer_SunLighting::Render(
@@ -882,6 +889,7 @@ Renderer_Skybox::Renderer_Skybox()
 
     LOG_DEBUG("Linking Skybox Shaders");
     this->sp = LinkShaders(this->vs, this->fs);
+    LOG_DEBUG("Skybox Shader Program = %u", this->sp.handle);
 
     LOG_DEBUG("Initializing Skybox Shader Program");
     this->sp.SetUniform("g_skybox", 0);
@@ -915,6 +923,7 @@ Renderer_SphericalBillboard::Renderer_SphericalBillboard()
 
     LOG_DEBUG("Linking Spherical Billboard Shaders");
     this->sp = LinkShaders(this->vs, this->fs);
+    LOG_DEBUG("Spherical Billboard Shader Program = %u", this->sp.handle);
 
     LOG_DEBUG("Initializing Spherical Billboard Shader Program");
     this->sp.SetUniform("g_sprite", 0);
@@ -968,6 +977,7 @@ Renderer_Bloom::Renderer_Bloom()
 
     LOG_DEBUG("Linking Bloom Upscale Shaders");
     this->sp_upscale = LinkShaders(this->vs, this->fs_upscale);
+    LOG_DEBUG("Bloom Upscale Shader Program = %u", this->sp_upscale.handle);
 
     LOG_DEBUG("Initializng Bloom Upscale Shader Program");
     this->sp_upscale.SetUniform("g_tex_input", 0);
@@ -979,6 +989,7 @@ Renderer_Bloom::Renderer_Bloom()
 
     LOG_DEBUG("Linking Bloom Downscale Shaders");
     this->sp_downscale = LinkShaders(this->vs, this->fs_downscale);
+    LOG_DEBUG("Bloom Downscale Shader Program = %u", this->sp_downscale.handle);
 
     LOG_DEBUG("Initializing Bloom Downscale Shader Program");
     this->sp_downscale.SetUniform("g_tex_input", 0);
@@ -989,6 +1000,7 @@ Renderer_Bloom::Renderer_Bloom()
 
     LOG_DEBUG("Linking Bloom Final Shaders");
     this->sp_final = LinkShaders(this->vs, this->fs_final);
+    LOG_DEBUG("Bloom Final Shader Program = %u", this->sp_final.handle);
 
     LOG_DEBUG("Initializing Bloom Final Shader Program");
     this->sp_final.SetUniform("g_tex_hdr", 0);
@@ -1040,6 +1052,7 @@ void Renderer_Bloom::Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 ra
 
     this->sp_downscale.UseProgram();
     this->sp_downscale.SetUniform("g_resolution", this->input_res);
+    this->sp_downscale.SetUniform("g_mip", 0);
 
     // downsample passes
     for (isize ii = 0; ii < BLOOM_MIP_CHAIN_LEN; ii++) {
@@ -1054,6 +1067,7 @@ void Renderer_Bloom::Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 ra
         // for next iter
         // input res is this stage's res
         this->sp_downscale.SetUniform("g_resolution", this->mips[ii].res);
+        this->sp_downscale.SetUniform("g_mip", (int)(ii + 1));
         // input texture is this stage's tex
         this->mips[ii].tex.Bind();
     }
@@ -1096,13 +1110,14 @@ void Renderer_Bloom::Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 ra
 Renderer_PostFX::Renderer_PostFX()
 {
     LOG_DEBUG("Compiling PostFX Vertex Shader");
-    this->vs = CompileShader(GL_VERTEX_SHADER, Postprocess_VS.src, Postprocess_VS.len);
+    this->vs = CompileShader(GL_VERTEX_SHADER, PostFX_VS.src, PostFX_VS.len);
 
     LOG_DEBUG("Compiling PostFX Fragment Shader");
-    this->fs = CompileShader(GL_FRAGMENT_SHADER, Postprocess_FS.src, Postprocess_FS.len);
+    this->fs = CompileShader(GL_FRAGMENT_SHADER, PostFX_FS.src, PostFX_FS.len);
 
     LOG_DEBUG("Linking PostFX Shaders");
     this->sp = LinkShaders(this->vs, this->fs);
+    LOG_DEBUG("PostFX Shader Program = %u", this->sp.handle);
 
     LOG_DEBUG("Initializing PostFX Shader Program");
     this->sp.SetUniform("g_screen", 0);

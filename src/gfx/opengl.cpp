@@ -122,28 +122,28 @@ Texture2D::Texture2D(const glm::vec4& color)
 
 void Texture2D::Bind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindTexture(GL_TEXTURE_2D, this->handle));
 }
 
 void Texture2D::Unbind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindTexture(GL_TEXTURE_2D, 0));
 }
 
 void Texture2D::Reserve()
 {
-    if (this->handle != 0) {
-        return;
-    }
+    ASSERT(this->handle == 0);
 
     GL(glGenTextures(1, &this->handle));
 }
 
 void Texture2D::Delete()
 {
-    if (this->handle == 0) {
-        return;
-    }
+    ASSERT(this->handle != 0);
 
     GL(glDeleteTextures(1, &this->handle));
     this->handle = 0;
@@ -153,30 +153,36 @@ void Texture2D::Delete()
 void TextureRT::Bind() const
 {
     ASSERT(this->handle != 0);
+
     GL(glBindTexture(GL_TEXTURE_2D, this->handle));
 }
 
 void TextureRT::Unbind() const
 {
     ASSERT(this->handle != 0);
+
     GL(glBindTexture(GL_TEXTURE_2D, 0));
 }
 
 void TextureRT::Reserve()
 {
     ASSERT(this->handle == 0);
+
     GL(glGenTextures(1, &this->handle));
 }
 
 void TextureRT::Delete()
 {
     ASSERT(this->handle != 0);
+
     GL(glDeleteTextures(1, &this->handle));
+    this->handle = 0;
 }
 
 void TextureRT::Setup(GLenum format, GLsizei width, GLsizei height)
 {
     ASSERT(this->handle != 0);
+
     this->Bind();
     GL(glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, GL_RGB, GL_FLOAT, nullptr));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
@@ -226,23 +232,21 @@ TextureCubemap::TextureCubemap(const std::array<std::string, 6>& faces)
 
 void TextureCubemap::Bind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindTexture(GL_TEXTURE_CUBE_MAP, this->handle));
 }
 
 void TextureCubemap::Reserve()
 {
-    if (this->handle != 0) {
-        return;
-    }
+    ASSERT(this->handle == 0);
 
     GL(glGenTextures(1, &this->handle));
 }
 
 void TextureCubemap::Delete()
 {
-    if (this->handle == 0) {
-        return;
-    }
+    ASSERT(this->handle != 0);
 
     GL(glDeleteTextures(1, &this->handle));
     this->handle = 0;
@@ -258,18 +262,14 @@ Uniform::Uniform(const char* name, GLint location)
 // VAO
 void VAO::Reserve()
 {
-    if (this->handle != 0) {
-        return;
-    }
+    ASSERT(this->handle == 0);
 
     GL(glGenVertexArrays(1, &this->handle));
 }
 
 void VAO::Delete()
 {
-    if (this->handle == 0) {
-        return;
-    }
+    ASSERT(this->handle != 0);
 
     GL(glDeleteVertexArrays(1, &this->handle));
     this->handle = 0;
@@ -277,11 +277,15 @@ void VAO::Delete()
 
 void VAO::Bind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindVertexArray(this->handle));
 }
 
 void VAO::Unbind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindVertexArray(0));
 }
 
@@ -306,18 +310,14 @@ void VAO::SetAttribute(
 // VBO
 void VBO::Reserve()
 {
-    if (this->handle != 0) {
-        return;
-    }
+    ASSERT(this->handle == 0);
 
     GL(glGenBuffers(1, &this->handle));
 }
 
 void VBO::Delete()
 {
-    if (this->handle == 0) {
-        return;
-    }
+    ASSERT(this->handle != 0);
 
     GL(glDeleteBuffers(1, &this->handle));
     this->handle = 0;
@@ -325,16 +325,22 @@ void VBO::Delete()
 
 void VBO::Bind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindBuffer(GL_ARRAY_BUFFER, this->handle));
 }
 
 void VBO::Unbind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindBuffer(GL_ARRAY_BUFFER, 0));
 }
 
 void VBO::LoadData(size_t size, const void* data, GLenum usage) const
 {
+    ASSERT(this->handle != 0);
+
     this->Bind();
     GL(glBufferData(GL_ARRAY_BUFFER, size, data, usage));
 }
@@ -342,18 +348,14 @@ void VBO::LoadData(size_t size, const void* data, GLenum usage) const
 // EBO
 void EBO::Reserve()
 {
-    if (this->handle != 0) {
-        return;
-    }
+    ASSERT(this->handle == 0);
 
     GL(glGenBuffers(1, &this->handle));
 }
 
 void EBO::Delete()
 {
-    if (this->handle == 0) {
-        return;
-    }
+    ASSERT(this->handle != 0);
 
     GL(glDeleteBuffers(1, &this->handle));
     this->handle = 0;
@@ -361,16 +363,22 @@ void EBO::Delete()
 
 void EBO::Bind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->handle));
 }
 
 void EBO::Unbind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0));
 }
 
 void EBO::LoadData(size_t size, const void* data, GLenum usage) const
 {
+    ASSERT(this->handle != 0);
+
     this->Bind();
     GL(glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, data, usage));
 }
@@ -378,9 +386,7 @@ void EBO::LoadData(size_t size, const void* data, GLenum usage) const
 /* --- UBO --- */
 void UBO::Reserve(size_t size)
 {
-    if (this->handle != 0) {
-        return;
-    }
+    ASSERT(this->handle == 0);
 
     GL(glGenBuffers(1, &this->handle));
     this->Bind();
@@ -390,9 +396,7 @@ void UBO::Reserve(size_t size)
 
 void UBO::Delete()
 {
-    if (this->handle == 0) {
-        return;
-    }
+    ASSERT(this->handle != 0);
 
     GL(glDeleteBuffers(1, &this->handle));
     this->handle = 0;
@@ -400,16 +404,22 @@ void UBO::Delete()
 
 void UBO::Bind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindBuffer(GL_UNIFORM_BUFFER, this->handle));
 }
 
 void UBO::Unbind() const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindBuffer(GL_UNIFORM_BUFFER, 0));
 }
 
 void UBO::SubData(size_t offset, size_t size, const void* data) const
 {
+    ASSERT(this->handle != 0);
+
     this->Bind();
     GL(glBufferSubData(GL_UNIFORM_BUFFER, offset, size, data));
     this->Unbind();
@@ -417,6 +427,8 @@ void UBO::SubData(size_t offset, size_t size, const void* data) const
 
 void UBO::BindSlot(GLuint index) const
 {
+    ASSERT(this->handle != 0);
+
     GL(glBindBufferBase(GL_UNIFORM_BUFFER, index, this->handle));
 }
 
@@ -424,12 +436,14 @@ void UBO::BindSlot(GLuint index) const
 void RBO::Reserve()
 {
     ASSERT(this->handle == 0);
+
     GL(glGenRenderbuffers(1, &this->handle));
 }
 
 void RBO::Delete()
 {
     ASSERT(this->handle != 0);
+
     GL(glDeleteRenderbuffers(1, &this->handle));
     this->handle = 0;
 }
@@ -437,18 +451,21 @@ void RBO::Delete()
 void RBO::Bind() const
 {
     ASSERT(this->handle != 0);
+
     GL(glBindRenderbuffer(GL_RENDERBUFFER, this->handle));
 }
 
 void RBO::Unbind() const
 {
     ASSERT(this->handle != 0);
+
     GL(glBindRenderbuffer(GL_RENDERBUFFER, 0));
 }
 
 void RBO::CreateStorage(GLenum internal_format, GLsizei samples, GLsizei width, GLsizei height)
 {
     ASSERT(this->handle != 0);
+
     this->Bind();
     GL(glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, internal_format, width, height));
 }
@@ -457,18 +474,21 @@ void RBO::CreateStorage(GLenum internal_format, GLsizei samples, GLsizei width, 
 void FBO::Reserve()
 {
     ASSERT(this->handle == 0);
+
     GL(glGenFramebuffers(1, &this->handle));
 }
 
 void FBO::Delete()
 {
     ASSERT(this->handle != 0);
+
     GL(glDeleteFramebuffers(1, &this->handle));
+    this->handle = 0;
 }
 
 void FBO::Bind() const
 {
-    // TODO: the default FBO (handle = 0) is actually the default FBO object
+    // NOTE: the default FBO (handle = 0) is actually the default FBO object
     // ASSERT(this->handle != 0);
     GL(glBindFramebuffer(GL_FRAMEBUFFER, this->handle));
 }
@@ -476,12 +496,14 @@ void FBO::Bind() const
 void FBO::Unbind() const
 {
     ASSERT(this->handle != 0);
+
     GL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
 }
 
 void FBO::Attach(RBO rbo, GLenum attachment) const
 {
     ASSERT(this->handle != 0);
+
     this->Bind();
     GL(glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, rbo.handle));
 }
@@ -489,6 +511,7 @@ void FBO::Attach(RBO rbo, GLenum attachment) const
 void FBO::Attach(TextureRT tex_rt, GLenum attachment) const
 {
     ASSERT(this->handle != 0);
+
     this->Bind();
     GL(glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, tex_rt.handle, 0));
 }
@@ -496,6 +519,7 @@ void FBO::Attach(TextureRT tex_rt, GLenum attachment) const
 void FBO::CheckComplete() const
 {
     ASSERT(this->handle != 0);
+
     this->Bind();
     ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 }

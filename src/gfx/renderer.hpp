@@ -233,7 +233,7 @@ struct Renderer_PostFX {
 struct Renderer_Bloom {
     static constexpr f32   BLOOM_RADIUS        = 0.005f;
     static constexpr f32   BLOOM_STRENGTH      = 0.04f;
-    static constexpr isize BLOOM_MIP_CHAIN_LEN = 5;
+    static constexpr isize BLOOM_MIP_CHAIN_LEN = 6;
 
     ShaderProgram sp_upscale, sp_downscale, sp_final;
 
