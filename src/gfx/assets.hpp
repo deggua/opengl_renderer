@@ -101,6 +101,7 @@ struct Object {
 };
 
 // TODO: maybe we should have two subtypes: EmissiveSprite3D and DiffuseSprite3D
+// TODO: add a rotation parameter
 struct Sprite3D {
     static VAO  vao;
     static VBO  vbo;

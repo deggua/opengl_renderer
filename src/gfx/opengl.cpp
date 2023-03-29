@@ -52,7 +52,7 @@ Texture2D::Texture2D(const std::string& path)
     // TODO: some of these should be methods like tex.SetParameter, tex.GenerateMipmap, etc. (I
     // think, maybe they can't be changed after loading)
     this->Reserve();
-    this->Bind();
+    this->Bind(GL_TEXTURE0);
 
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
@@ -98,13 +98,13 @@ Texture2D::Texture2D(const std::string& path)
 
     stbi_image_free(image_data);
 
-    this->Unbind();
+    this->Unbind(GL_TEXTURE0);
 }
 
 Texture2D::Texture2D(const glm::vec4& color)
 {
     this->Reserve();
-    this->Bind();
+    this->Bind(GL_TEXTURE0);
 
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
@@ -119,20 +119,22 @@ Texture2D::Texture2D(const glm::vec4& color)
 
     GL(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf));
 
-    this->Unbind();
+    this->Unbind(GL_TEXTURE0);
 }
 
-void Texture2D::Bind() const
+void Texture2D::Bind(GLenum texture_slot) const
 {
     ASSERT(this->handle != 0);
 
+    GL(glActiveTexture(texture_slot));
     GL(glBindTexture(GL_TEXTURE_2D, this->handle));
 }
 
-void Texture2D::Unbind() const
+void Texture2D::Unbind(GLenum texture_slot) const
 {
     ASSERT(this->handle != 0);
 
+    GL(glActiveTexture(texture_slot));
     GL(glBindTexture(GL_TEXTURE_2D, 0));
 }
 
@@ -152,17 +154,19 @@ void Texture2D::Delete()
 }
 
 /* --- TextureRT --- */
-void TextureRT::Bind() const
+void TextureRT::Bind(GLenum texture_slot) const
 {
     ASSERT(this->handle != 0);
 
+    GL(glActiveTexture(texture_slot));
     GL(glBindTexture(GL_TEXTURE_2D, this->handle));
 }
 
-void TextureRT::Unbind() const
+void TextureRT::Unbind(GLenum texture_slot) const
 {
     ASSERT(this->handle != 0);
 
+    GL(glActiveTexture(texture_slot));
     GL(glBindTexture(GL_TEXTURE_2D, 0));
 }
 
@@ -185,7 +189,7 @@ void TextureRT::Setup(GLenum format, GLsizei width, GLsizei height)
 {
     ASSERT(this->handle != 0);
 
-    this->Bind();
+    this->Bind(GL_TEXTURE0);
     GL(glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, GL_RGB, GL_FLOAT, nullptr));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));

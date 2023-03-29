@@ -13,28 +13,32 @@
 * HDR Tonemapping
 * Normal maps
 * Bloom
+* Postprocessing
 
 ## TODO:
 * Shadow optimizations
+* Fixed size 3D billboards
+* Fog
+* UI/Text rendering
+
+## Should be implemented but unnecessary for now:
 * Cubemap reflections
 * Animations
 * Particle effects
-* Fog
-* UI/Text
 * Linux support (currently only tested on Windows)
-* Volumetric fog
-* Volumetric light shafts
 
 ## Might be implemented eventually:
-* SSAO
+* SSAO/GTAO
 * SMAA
+* Volumetric fog
+* Volumetric light shafts
 * DOF
 * Soft stencil shadows (probably requires TAA or some form of temporal accumulation)
 * Cascaded shadow maps
 * Parallax maps
 * Tesselation
 * LOD/billboards
-* Forward+ rendering
+* Deferred rendering
 * Order independent transparency
 * GI model
 

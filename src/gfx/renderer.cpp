@@ -1046,8 +1046,7 @@ void Renderer_Bloom::Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 ra
     GL(glDisable(GL_STENCIL_TEST));
 
     // src_hdr is the input texture for first iteration of downsample
-    GL(glActiveTexture(GL_TEXTURE0));
-    src_hdr.Bind();
+    src_hdr.Bind(GL_TEXTURE0);
 
     // internal FBO is the output target until the final upscale stage
     this->fbo.Bind();
@@ -1071,7 +1070,7 @@ void Renderer_Bloom::Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 ra
         this->sp_downscale.SetUniform("g_resolution", this->mips[ii].res);
         this->sp_downscale.SetUniform("g_mip", (int)(ii + 1));
         // input texture is this stage's tex
-        this->mips[ii].tex.Bind();
+        this->mips[ii].tex.Bind(GL_TEXTURE0);
     }
 
     // now we upsample and additively blend backwards
@@ -1082,7 +1081,7 @@ void Renderer_Bloom::Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 ra
 
     // upsample passes
     for (isize ii = BLOOM_MIP_CHAIN_LEN - 1; ii > 0; ii--) {
-        this->mips[ii].tex.Bind();
+        this->mips[ii].tex.Bind(GL_TEXTURE0);
         GL(glViewport(0, 0, (GLsizei)this->mips[ii - 1].res.x, (GLsizei)this->mips[ii - 1].res.y));
         this->fbo.Attach(this->mips[ii - 1].tex, GL_COLOR_ATTACHMENT0);
 
@@ -1094,11 +1093,9 @@ void Renderer_Bloom::Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 ra
     GL(glBlendFunc(GL_ONE, GL_ZERO));
 
     GL(glViewport(0, 0, (GLsizei)this->input_res.x, (GLsizei)this->input_res.y));
-    GL(glActiveTexture(GL_TEXTURE0));
-    src_hdr.Bind();
+    src_hdr.Bind(GL_TEXTURE0);
 
-    GL(glActiveTexture(GL_TEXTURE1));
-    this->mips[0].tex.Bind();
+    this->mips[0].tex.Bind(GL_TEXTURE1);
 
     this->sp_final.UseProgram();
     this->sp_final.SetUniform("g_bloom_strength", strength);
@@ -1162,8 +1159,7 @@ void Renderer_PostFX::RenderTonemap(const TextureRT& src, const FBO& dst, GLuint
     this->sp_tonemap.UseProgram();
     this->sp_tonemap.SetUniform("g_tonemapper", tonemapper);
 
-    GL(glActiveTexture(GL_TEXTURE0));
-    src.Bind();
+    src.Bind(GL_TEXTURE0);
     this->quad.Draw();
 }
 
@@ -1184,8 +1180,7 @@ void Renderer_PostFX::RenderSharpen(
     this->sp_sharpen.SetUniform("g_resolution", screen_resolution);
     this->sp_sharpen.SetUniform("g_strength", strength);
 
-    GL(glActiveTexture(GL_TEXTURE0));
-    src.Bind();
+    src.Bind(GL_TEXTURE0);
     this->quad.Draw();
 }
 
@@ -1201,8 +1196,7 @@ void Renderer_PostFX::RenderGammaCorrect(const TextureRT& src, const FBO& dst, f
     this->sp_gamma.UseProgram();
     this->sp_gamma.SetUniform("g_gamma", gamma);
 
-    GL(glActiveTexture(GL_TEXTURE0));
-    src.Bind();
+    src.Bind(GL_TEXTURE0);
     this->quad.Draw();
 }
 

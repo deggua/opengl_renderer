@@ -48,8 +48,8 @@ struct Texture2D : Handle<GLuint> {
     Texture2D(const std::string& path);
     Texture2D(const glm::vec4& color);
 
-    void Bind() const;
-    void Unbind() const;
+    void Bind(GLenum texture_slot) const;
+    void Unbind(GLenum texture_slot) const;
     void Reserve();
     void Delete();
 };
@@ -57,8 +57,8 @@ struct Texture2D : Handle<GLuint> {
 struct TextureRT : Handle<GLuint> {
     using Handle<GLuint>::Handle;
 
-    void Bind() const;
-    void Unbind() const;
+    void Bind(GLenum texture_slot) const;
+    void Unbind(GLenum texture_slot) const;
     void Reserve();
     void Delete();
 

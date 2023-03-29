@@ -360,14 +360,9 @@ Material::Material(const aiMaterial& material, std::string_view directory)
 
 void Material::Use(ShaderProgram& sp) const
 {
-    GL(glActiveTexture(GL_TEXTURE0));
-    this->diffuse->Bind();
-
-    GL(glActiveTexture(GL_TEXTURE1));
-    this->specular->Bind();
-
-    GL(glActiveTexture(GL_TEXTURE2));
-    this->normal->Bind();
+    this->diffuse->Bind(GL_TEXTURE0);
+    this->specular->Bind(GL_TEXTURE1);
+    this->normal->Bind(GL_TEXTURE2);
 
     sp.SetUniform("material.gloss", this->gloss);
 }
@@ -629,8 +624,7 @@ void Sprite3D::Draw(ShaderProgram& sp) const
 {
     (void)sp;
 
-    GL(glActiveTexture(GL_TEXTURE0));
-    this->sprite->Bind();
+    this->sprite->Bind(GL_TEXTURE0);
 
     this->vao.Bind();
     GL(glDrawArrays(GL_TRIANGLES, 0, lengthof(sprite_quad)));
