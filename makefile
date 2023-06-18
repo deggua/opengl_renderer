@@ -31,6 +31,10 @@ SRCS += $(wildcard $(SRC_DIR)/utils/*.cpp)
 SRCS += $(wildcard $(SRC_DIR)/gfx/*.cpp)
 SRCS += $(wildcard $(SRC_DIR)/math/*.cpp)
 
+SRCS += $(wildcard $(SRC_DIR)/dependencies/imgui/*.cpp)
+SRCS += $(SRC_DIR)/dependencies/imgui/backends/imgui_impl_glfw.cpp
+SRCS += $(SRC_DIR)/dependencies/imgui/backends/imgui_impl_opengl3.cpp
+
 # platform source files
 # SRCS += $(wildcard $(SRC_DIR)/platform/windows/*.c)
 

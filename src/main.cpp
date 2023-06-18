@@ -21,6 +21,11 @@
 #include "gfx/renderer.hpp"
 #include "math/random.hpp"
 
+/// IMGUI
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 SunLight sun_light
     = SunLight().Direction({-1.0f, -1.0f, 0.0f}).Color(1.0f, 1.0f, 1.0f).Intensity(1.0f);
 SpotLight spot_light = SpotLight()
@@ -50,10 +55,22 @@ f32 g_sharpening_strength = 1.0f;
 u32 g_res_w_old = g_res_w;
 u32 g_res_h_old = g_res_h;
 
+bool g_ui_mode = false;
+
 static void ProcessKeyboardInput(GLFWwindow* window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
+    }
+
+    static auto last_alt_key_state = GLFW_RELEASE;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS && last_alt_key_state == GLFW_RELEASE) {
+        g_ui_mode = !g_ui_mode;
+    }
+    last_alt_key_state = glfwGetKey(window, GLFW_KEY_LEFT_ALT);
+
+    if (g_ui_mode) {
+        return;
     }
 
     float move_speed = 2.5f;
@@ -85,6 +102,7 @@ static void ProcessKeyboardInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
         dir_move -= dir_up;
     }
+
     static auto last_f_key_state = GLFW_RELEASE;
     if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS && last_f_key_state == GLFW_RELEASE) {
         if (g_sharpening_strength == 0.0f) {
@@ -119,6 +137,10 @@ static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
 {
     (void)window;
 
+    if (g_ui_mode) {
+        return;
+    }
+
     float xpos = xpos_d;
     float ypos = ypos_d;
 
@@ -151,6 +173,10 @@ static void ProcessMouseButtonInput(GLFWwindow* window, int button, int action, 
     (void)window;
     (void)mods;
 
+    if (g_ui_mode) {
+        return;
+    }
+
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         sun_light.dir = g_Camera.FacingDirection();
     }
@@ -172,6 +198,10 @@ static void ProcessMouseScrollInput(GLFWwindow* window, double xoffset, double y
 {
     (void)window;
     (void)xoffset;
+
+    if (g_ui_mode) {
+        return;
+    }
 
     f32 angle_adj_deg   = yoffset * 1.0f;
     f32 cur_angle_inner = spot_light.InnerCutoff();
@@ -235,10 +265,32 @@ void RenderLoop(GLFWwindow* window)
         SunLight     sun_dupe = sun_light;
         SpotLight    sp_dupe  = spot_light;
 
+        // Capture input
+        glfwPollEvents();
+
+        // Start IMGUI frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        if (g_ui_mode) {
+            ImGui::ShowDemoWindow(&g_ui_mode);
+        }
+
         UpdateTime(window);
         ProcessKeyboardInput(window);
 
+        if (g_ui_mode) {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        } else {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            if (glfwRawMouseMotionSupported()) {
+                glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+            }
+        }
+
         // setup rendering parameters
+        ImGui::Render();
         rt.Resolution(g_res_w, g_res_h);
         rt.ViewPosition(cam.pos);
         rt.ViewMatrix(cam.ViewMatrix());
@@ -267,8 +319,9 @@ void RenderLoop(GLFWwindow* window)
 
         rt.FinishRender(2.2f);
 
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         glfwSwapBuffers(window);
-        glfwPollEvents();
     }
 }
 
@@ -311,7 +364,21 @@ int main()
     glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
     glfwSwapInterval(0);
 
-    LOG_INFO("GLFW initialized, starting renderer...");
+    LOG_INFO("GLFW initialized");
+
+    // Setup IMGUI context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    // Setup IMGUI style
+    ImGui::StyleColorsDark();
+
+    // Setup IMGUI Platform/Renderer backends
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 450");
 
     try {
         RenderLoop(window);
@@ -319,6 +386,12 @@ int main()
         ABORT("Exception thrown from Renderer: %s", e.what());
     }
 
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    glfwDestroyWindow(window);
     glfwTerminate();
+
     return EXIT_SUCCESS;
 }

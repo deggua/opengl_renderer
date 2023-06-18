@@ -1,4 +1,6 @@
 -Isrc
+-Isrc/dependencies/imgui
+-Isrc/dependencies/imgui/backends
 -std=c++20
 
 -Wfatal-errors
