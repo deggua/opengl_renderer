@@ -46,7 +46,7 @@ struct SunLight {
 
 struct SpotLight {
     glm::vec3 pos;
-    glm::vec3 dir; // must be pre-normalized
+    glm::vec3 dir;          // must be pre-normalized
     glm::vec3 color;
     f32       inner_cutoff; // dot(dir, inner_dir) or cos(angle)
     f32       outer_cutoff; // dot(dit, outer_dir) or cos(angle)
@@ -334,7 +334,7 @@ struct Renderer {
     void RenderObjectLighting(const SpotLight& light, const std::vector<Object>& objs);
     void RenderObjectLighting(const SunLight& light, const std::vector<Object>& objs);
     void RenderSkybox(const Skybox& sky);
-    void RenderSprite(const std::vector<Sprite3D>& sprites);
+    void RenderSprites(const std::vector<Sprite3D>& sprites);
 
     // TODO: Need to make it more clear that you have to call this function before calling any of
     // the functions below

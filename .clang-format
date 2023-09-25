@@ -140,3 +140,5 @@ TypenameMacros: [
     'Vector', 'Dict', 'Option', 'Tuple', 'Set', 'Tree', 'List'
 ]
 
+IfMacros: ['PROFILE_BLOCK', 'PROFILE_GPU']
+

@@ -11,7 +11,7 @@ CC_FLAGS_FILE = compile_flags.txt
 CC_FLAGS = $(shell type $(CC_FLAGS_FILE))
 
 CC_FLAGS_DEBUG_MODE = -g3 -O0 -fuse-ld=lld
-CC_FLAGS_RELEASE_MODE = -g3 -Ofast -fuse-ld=lld -flto -Wl,/LTCG
+CC_FLAGS_RELEASE_MODE = -g3 -Ofast -fuse-ld=lld -flto=auto -Wl,/LTCG
 
 CC_FLAGS_DEBUG = $(CC_FLAGS_DEBUG_MODE) $(CC_FLAGS)
 CC_FLAGS_RELEASE = $(CC_FLAGS_RELEASE_MODE) $(CC_FLAGS)

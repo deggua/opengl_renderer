@@ -263,7 +263,7 @@ Geometry::Geometry(const aiMesh& mesh)
     this->vao_shadow.SetAttribute(0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, pos));
     this->vao_shadow.SetAttribute(1, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, norm));
     this->vao_shadow.SetAttribute(2, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tangent));
-    this->vao_visual.SetAttribute(3, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, bitangent));
+    this->vao_shadow.SetAttribute(3, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, bitangent));
     this->vao_shadow.SetAttribute(4, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, tex));
 
     this->vao_visual.Bind();

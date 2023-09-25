@@ -20,6 +20,7 @@
 #include "gfx/opengl.hpp"
 #include "gfx/renderer.hpp"
 #include "math/random.hpp"
+#include "utils/profiling.hpp"
 
 /// IMGUI
 #include "imgui.h"
@@ -57,80 +58,192 @@ u32 g_res_h_old = g_res_h;
 
 bool g_ui_mode = false;
 
-static void ProcessKeyboardInput(GLFWwindow* window)
+typedef void (*KeyCallback_OnTransition)(GLFWwindow* window, bool key_pressed);
+
+static void Key_ESC_OnTransition(GLFWwindow* window, bool key_pressed)
 {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+    if (key_pressed) {
         glfwSetWindowShouldClose(window, true);
     }
+}
 
-    static auto last_alt_key_state = GLFW_RELEASE;
-    if (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS && last_alt_key_state == GLFW_RELEASE) {
+static void Key_X_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
         g_ui_mode = !g_ui_mode;
     }
-    last_alt_key_state = glfwGetKey(window, GLFW_KEY_LEFT_ALT);
+}
 
-    if (g_ui_mode) {
+static void Key_T_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
+        g_sharpening_strength = g_sharpening_strength == 1.0f ? 0.0f : 1.0f;
+    }
+}
+
+static void Key_R_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
+        point_lights.clear();
+        sprites.clear();
+    }
+}
+
+enum {
+    MOVE_DIR_NONE     = 0,
+    MOVE_DIR_UP       = (1 << 0),
+    MOVE_DIR_DOWN     = (1 << 1),
+    MOVE_DIR_LEFT     = (1 << 2),
+    MOVE_DIR_RIGHT    = (1 << 3),
+    MOVE_DIR_FORWARD  = (1 << 4),
+    MOVE_DIR_BACKWARD = (1 << 5),
+};
+
+bool g_move_fast  = false;
+int  g_move_flags = MOVE_DIR_NONE;
+
+static void Key_W_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
+        g_move_flags |= MOVE_DIR_FORWARD;
+    } else {
+        g_move_flags &= ~MOVE_DIR_FORWARD;
+    }
+}
+
+static void Key_A_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
+        g_move_flags |= MOVE_DIR_LEFT;
+    } else {
+        g_move_flags &= ~MOVE_DIR_LEFT;
+    }
+}
+
+static void Key_S_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
+        g_move_flags |= MOVE_DIR_BACKWARD;
+    } else {
+        g_move_flags &= ~MOVE_DIR_BACKWARD;
+    }
+}
+
+static void Key_D_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
+        g_move_flags |= MOVE_DIR_RIGHT;
+    } else {
+        g_move_flags &= ~MOVE_DIR_RIGHT;
+    }
+}
+
+static void Key_SPACE_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
+        g_move_flags |= MOVE_DIR_UP;
+    } else {
+        g_move_flags &= ~MOVE_DIR_UP;
+    }
+}
+
+static void Key_CTRL_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
+        g_move_flags |= MOVE_DIR_DOWN;
+    } else {
+        g_move_flags &= ~MOVE_DIR_DOWN;
+    }
+}
+
+static void Key_SHIFT_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    g_move_fast = key_pressed;
+}
+
+bool g_spotlight_on = true;
+
+static void Key_F_OnTransition(GLFWwindow* window, bool key_pressed)
+{
+    (void)window;
+    if (key_pressed) {
+        g_spotlight_on = !g_spotlight_on;
+    }
+}
+
+static void ProcessKeyboardInput(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    (void)scancode;
+    (void)action;
+    (void)mods;
+
+    static bool key_states[GLFW_KEY_LAST + 1] = {0};
+
+    static constexpr KeyCallback_OnTransition on_transition[GLFW_KEY_LAST + 1] = {
+        [GLFW_KEY_ESCAPE]        = Key_ESC_OnTransition,
+        [GLFW_KEY_X]             = Key_X_OnTransition,
+        [GLFW_KEY_T]             = Key_T_OnTransition,
+        [GLFW_KEY_R]             = Key_R_OnTransition,
+        [GLFW_KEY_W]             = Key_W_OnTransition,
+        [GLFW_KEY_A]             = Key_A_OnTransition,
+        [GLFW_KEY_S]             = Key_S_OnTransition,
+        [GLFW_KEY_D]             = Key_D_OnTransition,
+        [GLFW_KEY_SPACE]         = Key_SPACE_OnTransition,
+        [GLFW_KEY_RIGHT_CONTROL] = Key_CTRL_OnTransition,
+        [GLFW_KEY_LEFT_CONTROL]  = Key_CTRL_OnTransition,
+        [GLFW_KEY_RIGHT_SHIFT]   = Key_SHIFT_OnTransition,
+        [GLFW_KEY_LEFT_SHIFT]    = Key_SHIFT_OnTransition,
+        [GLFW_KEY_F]             = Key_F_OnTransition,
+    };
+
+    bool key_pressed;
+    if (action == GLFW_PRESS) {
+        key_pressed = true;
+    } else if (action == GLFW_RELEASE) {
+        key_pressed = false;
+    } else {
         return;
     }
 
-    float move_speed = 2.5f;
-    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-        move_speed *= 3.0f;
+    if (key_states[key] != key_pressed && on_transition[key] != NULL) {
+        on_transition[key](window, key_pressed);
     }
+
+    key_states[key] = key_pressed;
+}
+
+static void InputTick(void)
+{
+    float     move_speed = g_move_fast ? 3.0f * 2.5f : 2.5f;
+    glm::vec3 move_dir   = {0, 0, 0};
 
     glm::vec3 dir_forward = g_Camera.FacingDirection();
     glm::vec3 dir_up      = g_Camera.UpDirection();
     glm::vec3 dir_right   = g_Camera.RightDirection();
 
-    glm::vec3 dir_move = {};
+    move_dir += (g_move_flags & MOVE_DIR_FORWARD) ? dir_forward : glm::vec3();
+    move_dir -= (g_move_flags & MOVE_DIR_BACKWARD) ? dir_forward : glm::vec3();
 
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        dir_move += dir_forward;
-    }
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        dir_move -= dir_forward;
-    }
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        dir_move -= dir_right;
-    }
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        dir_move += dir_right;
-    }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-        dir_move += dir_up;
-    }
-    if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
-        dir_move -= dir_up;
-    }
+    move_dir += (g_move_flags & MOVE_DIR_RIGHT) ? dir_right : glm::vec3();
+    move_dir -= (g_move_flags & MOVE_DIR_LEFT) ? dir_right : glm::vec3();
 
-    static auto last_f_key_state = GLFW_RELEASE;
-    if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS && last_f_key_state == GLFW_RELEASE) {
-        if (g_sharpening_strength == 0.0f) {
-            g_sharpening_strength = 1.0f;
-            LOG_DEBUG("Setting sharpening to %f", g_sharpening_strength);
-        } else {
-            g_sharpening_strength = 0.0f;
-            LOG_DEBUG("Setting sharpening to %f", g_sharpening_strength);
-        }
-        last_f_key_state = GLFW_PRESS;
-    } else if (glfwGetKey(window, GLFW_KEY_F) == GLFW_RELEASE && last_f_key_state == GLFW_PRESS) {
-        last_f_key_state = GLFW_RELEASE;
-    }
+    move_dir += (g_move_flags & MOVE_DIR_UP) ? dir_up : glm::vec3();
+    move_dir -= (g_move_flags & MOVE_DIR_DOWN) ? dir_up : glm::vec3();
 
-    if (length(dir_move) > 0.1f) {
-        g_Camera.pos += normalize(dir_move) * move_speed * g_dt;
+    if (length(move_dir) > 0.1f) {
+        g_Camera.pos += normalize(move_dir) * move_speed * g_dt;
     }
-
     spot_light.Position(g_Camera.pos + 0.25f * dir_up).Direction(dir_forward);
-
-    static bool prev_r_key = false;
-    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && prev_r_key == false) {
-        point_lights.clear();
-        sprites.clear();
-        prev_r_key = true;
-    } else if (glfwGetKey(window, GLFW_KEY_R) == GLFW_RELEASE && prev_r_key == true) {
-        prev_r_key = false;
-    }
 }
 
 static void ProcessMouseInput(GLFWwindow* window, double xpos_d, double ypos_d)
@@ -274,11 +387,88 @@ void RenderLoop(GLFWwindow* window)
         ImGui::NewFrame();
 
         if (g_ui_mode) {
-            ImGui::ShowDemoWindow(&g_ui_mode);
+            auto cpu_sorted = std::vector<std::pair<ProfilerScope, uint64_t>>();
+            auto gpu_sorted = std::vector<std::pair<ProfilerScope, uint64_t>>();
+            cpu_sorted.reserve(ProfilingMeasurements.size());
+            gpu_sorted.reserve(ProfilingMeasurements.size());
+
+            for (const auto& [scope, measurement] : ProfilingMeasurements) {
+                cpu_sorted.push_back({scope, measurement.cpu_time});
+                gpu_sorted.push_back({scope, measurement.gpu_time});
+            }
+
+            std::sort(cpu_sorted.begin(), cpu_sorted.end(), [](auto left, auto right) {
+                return left.second > right.second;
+            });
+
+            std::sort(gpu_sorted.begin(), gpu_sorted.end(), [](auto left, auto right) {
+                return left.second > right.second;
+            });
+
+            ImGui::Begin("Profiling Data", &g_ui_mode);
+
+            ImGui::Text("CPU");
+            ImGui::Text("%-120s | %-15s | %-s", "Function", "Tag", "Usage");
+            ImGui::Text(
+                "----------------------------------------------------------------------------------"
+                "---------------------------------------------------------------------------------"
+                "-");
+            const auto& cpu_total_scope  = cpu_sorted[0].first;
+            uint64_t    cpu_total_cycles = cpu_sorted[0].second;
+            ImGui::Text(
+                "%-120s | %-15s | %.04f%%",
+                cpu_total_scope.function,
+                cpu_total_scope.tag,
+                100.0f);
+
+            for (size_t ii = 1; ii < cpu_sorted.size(); ii++) {
+                const auto& entry_scope  = cpu_sorted[ii].first;
+                const auto& entry_cycles = cpu_sorted[ii].second;
+
+                ImGui::Text(
+                    "%-120s | %-15s | %.04f%%",
+                    entry_scope.function,
+                    entry_scope.tag,
+                    100.0f * (float)entry_cycles / (float)cpu_total_cycles);
+            }
+
+            ImGui::Text("");
+            ImGui::Text("");
+            ImGui::Text("GPU");
+            ImGui::Text("%-120s | %-15s | %-s", "Function", "Tag", "Usage");
+            ImGui::Text(
+                "----------------------------------------------------------------------------------"
+                "---------------------------------------------------------------------------------"
+                "-");
+            const auto& gpu_total_scope  = gpu_sorted[0].first;
+            uint64_t    gpu_total_cycles = gpu_sorted[0].second;
+            ImGui::Text(
+                "%-120s | %-15s | %.04f%%",
+                gpu_total_scope.function,
+                gpu_total_scope.tag,
+                100.0f);
+
+            for (size_t ii = 1; ii < gpu_sorted.size(); ii++) {
+                const auto& entry_scope  = gpu_sorted[ii].first;
+                const auto& entry_cycles = gpu_sorted[ii].second;
+
+                ImGui::Text(
+                    "%-120s | %-15s | %.04f%%",
+                    entry_scope.function,
+                    entry_scope.tag,
+                    100.0f * (float)entry_cycles / (float)gpu_total_cycles);
+            }
+
+            ImGui::End();
+        }
+
+        static size_t frame_counter = 0;
+        if ((frame_counter++ % 1024) == 0) {
+            ResetProfilingData();
         }
 
         UpdateTime(window);
-        ProcessKeyboardInput(window);
+        InputTick();
 
         if (g_ui_mode) {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -291,37 +481,44 @@ void RenderLoop(GLFWwindow* window)
 
         // setup rendering parameters
         ImGui::Render();
-        rt.Resolution(g_res_w, g_res_h);
-        rt.ViewPosition(cam.pos);
-        rt.ViewMatrix(cam.ViewMatrix());
 
-        rt.StartRender();
-        {
-            rt.RenderObjectLighting(ambient_light, objs);
-            rt.RenderObjectLighting(sun_dupe, objs);
+        PROFILE_BLOCK ("Render Pass") {
+            rt.Resolution(g_res_w, g_res_h);
+            rt.ViewPosition(cam.pos);
+            rt.ViewMatrix(cam.ViewMatrix());
 
-            for (const auto& light : point_lights) {
-                rt.RenderObjectLighting(light, objs);
+            rt.StartRender();
+            {
+                rt.RenderObjectLighting(ambient_light, objs);
+                rt.RenderObjectLighting(sun_dupe, objs);
+
+                for (const auto& light : point_lights) {
+                    rt.RenderObjectLighting(light, objs);
+                }
+
+                if (g_spotlight_on) {
+                    rt.RenderObjectLighting(sp_dupe, objs);
+                }
+                rt.RenderSkybox(sky);
+
+                rt.RenderSprites(sprites);
+            }
+            rt.FinishGeometry();
+
+            rt.RenderBloom(0.005f, 0.04f);
+            rt.RenderTonemap(Renderer_PostFX::TONEMAP_ACES_APPROX);
+            if (g_sharpening_strength != 0.0f) {
+                rt.RenderSharpening(g_sharpening_strength);
             }
 
-            rt.RenderObjectLighting(sp_dupe, objs);
-            rt.RenderSkybox(sky);
+            rt.FinishRender(2.2f);
 
-            rt.RenderSprite(sprites);
-        }
-        rt.FinishGeometry();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        rt.RenderBloom(0.005f, 0.04f);
-        rt.RenderTonemap(Renderer_PostFX::TONEMAP_ACES_APPROX);
-        if (g_sharpening_strength != 0.0f) {
-            rt.RenderSharpening(g_sharpening_strength);
-        }
+            glfwSwapBuffers(window);
+        };
 
-        rt.FinishRender(2.2f);
-
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        glfwSwapBuffers(window);
+        CollectProfilingData();
     }
 }
 
@@ -355,6 +552,7 @@ int main()
     glfwSetCursorPosCallback(window, ProcessMouseInput);
     glfwSetMouseButtonCallback(window, ProcessMouseButtonInput);
     glfwSetScrollCallback(window, ProcessMouseScrollInput);
+    glfwSetKeyCallback(window, ProcessKeyboardInput);
 
     if (glewInit() != GLEW_OK) {
         glfwTerminate();

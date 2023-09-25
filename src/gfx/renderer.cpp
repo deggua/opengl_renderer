@@ -9,6 +9,7 @@
 #include "common.hpp"
 #include "gfx/opengl.hpp"
 #include "math/random.hpp"
+#include "utils/profiling.hpp"
 #include "utils/settings.hpp"
 
 SHADER_FILE(Lighting_VS);
@@ -1341,6 +1342,8 @@ Renderer& Renderer::ClearColor(f32 red, f32 green, f32 blue)
 
 void Renderer::StartRender()
 {
+    PROFILE_FUNCTION();
+
     // cache the VP matrix for this render pass
     f32       aspect   = (f32)res_width / (f32)res_height;
     glm::mat4 mtx_proj = glm::perspective(glm::radians(this->fov), aspect, CLIP_NEAR, CLIP_FAR);
@@ -1365,37 +1368,45 @@ void Renderer::StartRender()
 
 void Renderer::RenderObjectLighting(const AmbientLight& light, const std::vector<Object>& objs)
 {
+    PROFILE_FUNCTION();
     this->rp_ambient_lighting.Render(light, objs, this->rs);
 }
 
 void Renderer::RenderObjectLighting(const PointLight& light, const std::vector<Object>& objs)
 {
+    PROFILE_FUNCTION();
     this->rp_point_lighting.Render(light, objs, this->rs);
 }
 
 void Renderer::RenderObjectLighting(const SpotLight& light, const std::vector<Object>& objs)
 {
+    PROFILE_FUNCTION();
     this->rp_spot_lighting.Render(light, objs, this->rs);
 }
 
 void Renderer::RenderObjectLighting(const SunLight& light, const std::vector<Object>& objs)
 {
+    PROFILE_FUNCTION();
     this->rp_sun_lighting.Render(light, objs, this->rs);
 }
 
 void Renderer::RenderSkybox(const Skybox& sky)
 {
+    PROFILE_FUNCTION();
     this->rp_skybox.Render(sky, this->rs);
 }
 
 // TODO: naming
-void Renderer::RenderSprite(const std::vector<Sprite3D>& sprites)
+void Renderer::RenderSprites(const std::vector<Sprite3D>& sprites)
 {
+    PROFILE_FUNCTION();
     this->rp_spherical_billboard.Render(sprites, this->rs);
 }
 
 void Renderer::FinishGeometry()
 {
+    PROFILE_FUNCTION();
+
     // blit the MSAA FBO to the single sample FBO
     GL(glBindFramebuffer(GL_READ_FRAMEBUFFER, this->msaa.fbo.handle));
     GL(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, this->GetRenderTarget().fbo.handle));
@@ -1416,6 +1427,8 @@ void Renderer::FinishGeometry()
 
 void Renderer::RenderBloom(f32 radius, f32 strength)
 {
+    PROFILE_FUNCTION();
+
     Simple_RT& src = this->GetRenderSource();
     Simple_RT& dst = this->GetRenderTarget();
     this->rp_bloom.Render(src.color, dst.fbo, radius, strength);
@@ -1425,6 +1438,8 @@ void Renderer::RenderBloom(f32 radius, f32 strength)
 
 void Renderer::RenderTonemap(GLuint tonemapper)
 {
+    PROFILE_FUNCTION();
+
     Simple_RT& src = this->GetRenderSource();
     Simple_RT& dst = this->GetRenderTarget();
     this->rp_postfx.RenderTonemap(src.color, dst.fbo, tonemapper);
@@ -1434,6 +1449,8 @@ void Renderer::RenderTonemap(GLuint tonemapper)
 
 void Renderer::RenderSharpening(f32 strength)
 {
+    PROFILE_FUNCTION();
+
     Simple_RT& src = this->GetRenderSource();
     Simple_RT& dst = this->GetRenderTarget();
     this->rp_postfx
@@ -1445,6 +1462,8 @@ void Renderer::RenderSharpening(f32 strength)
 // TODO: should gamma be a parameter to this function, or part of the renderer's state?
 void Renderer::FinishRender(f32 gamma)
 {
+    PROFILE_FUNCTION();
+
     FBO        default_fbo = FBO();
     Simple_RT& src         = this->GetRenderSource();
     this->rp_postfx.RenderGammaCorrect(src.color, default_fbo, gamma);
