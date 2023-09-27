@@ -1,9 +1,11 @@
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <string_view>
 #include <unordered_map>
 
 #include "common/opengl.hpp"
+#include "gfx/opengl.hpp"
 #include "utils/hash.hpp"
 
 #define CONCAT2_(a, b) a##b
@@ -13,7 +15,7 @@
     auto CONCAT2(profile_function_, __COUNTER__) = Profiler(__PRETTY_FUNCTION__, "Function Call")
 #define PROFILE_SCOPE(name) \
     auto CONCAT2(profile_scope_, __COUNTER__) = Profiler(__PRETTY_FUNCTION__, name)
-#define PROFILE_BLOCK(name) Profiler(__PRETTY_FUNCTION__, name, true)->*[&](void)
+#define PROFILE_BLOCK(name) Profiler(__PRETTY_FUNCTION__, name)->*[&]
 
 template<>
 struct std::hash<const char*> {
@@ -36,57 +38,62 @@ struct ProfilerScope {
     const char* function;
     const char* tag;
 
-    bool operator==(const ProfilerScope& rhs) const
-    {
-        return (this->function == rhs.function && this->tag == rhs.tag);
-    }
+    ProfilerScope() = delete;
+    ProfilerScope(const char* function, const char* tag) noexcept;
+
+    bool operator==(const ProfilerScope& rhs) const;
 };
 
 HASH_IMPL(ProfilerScope, (x.function, x.tag));
 
 struct ProfilerMeasurement {
-    uint64_t cpu_time;
-    uint64_t gpu_time;
+    // TODO: should eventually convert these to the same units
+    // gpu_time is ns, cpu_time is cycles (?)
+    u64 cpu_time;
+    u64 gpu_time;
 
-    void operator+=(const ProfilerMeasurement& rhs)
-    {
-        this->cpu_time += rhs.cpu_time;
-        this->gpu_time += rhs.gpu_time;
-    }
+    void operator+=(const ProfilerMeasurement& rhs);
 };
 
 struct ProfilerQueryable {
     ProfilerScope scope;
 
-    uint64_t cpu_start;
-    uint64_t cpu_end;
+    u64 cpu_start;
+    u64 cpu_end;
 
-    GLuint gpu_start_q;
-    GLuint gpu_end_q;
+    Query gpu_start;
+    Query gpu_end;
 
-    ProfilerQueryable();
-    ProfilerQueryable(const char* function, const char* tag);
+    ProfilerQueryable(const char* function, const char* tag) noexcept;
+    ~ProfilerQueryable() noexcept;
 
-    ProfilerMeasurement Measure(void);
+    ProfilerQueryable(const ProfilerQueryable&) = delete;
+    ProfilerQueryable(ProfilerQueryable&& other) noexcept;
+
+    void                Begin();
+    void                End();
+    ProfilerMeasurement Get() const;
 };
 
 struct Profiler {
-    ProfilerQueryable query;
-    bool              ignore_exit;
+    static constexpr usize INVALID_QUERY = ~(usize)0;
 
-    Profiler(const char* function, const char* tag, bool ignore_exit = false);
-    Profiler(const Profiler&) = delete;
-    Profiler(const Profiler&&);
+    usize query;
+
+    Profiler(const char* function, const char* tag);
     ~Profiler();
 
-    void Begin(void);
-    void End(void);
-
-    void operator->*(std::function<void(void)> invoke);
+    template<class F>
+    void operator->*(F invoke)
+    {
+        invoke();
+    }
 };
 
 extern std::unordered_map<ProfilerScope, ProfilerMeasurement> ProfilingMeasurements;
 extern std::vector<ProfilerQueryable>                         ProfilingQueryables;
+extern bool                                                   ProfilingEnabled;
 
 void ResetProfilingData(void);
 void CollectProfilingData(void);
+void SetProfilingEnabled(bool enabled);

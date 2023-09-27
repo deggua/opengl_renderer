@@ -226,6 +226,16 @@ struct FBO : Handle<GLuint> {
     void CheckComplete() const;
 };
 
+struct Query : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
+
+    void Reserve();
+    void Delete();
+
+    void RecordTimestamp();
+    u64  RetrieveValue() const;
+};
+
 template<class... Ts, class = std::enable_if_t<std::conjunction_v<std::is_same<Shader, Ts>...>>>
 void AttachShaders(ShaderProgram program, Shader shader, Ts... shaders)
 {

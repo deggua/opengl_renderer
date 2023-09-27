@@ -529,3 +529,36 @@ void FBO::CheckComplete() const
     this->Bind();
     ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 }
+
+void Query::Reserve()
+{
+    ASSERT(this->handle == 0);
+    GL(glGenQueries(1, &this->handle));
+}
+
+void Query::Delete()
+{
+    if (this->handle == 0) {
+        return;
+    }
+
+    GL(glDeleteQueries(1, &this->handle));
+
+    this->handle = 0;
+}
+
+void Query::RecordTimestamp()
+{
+    ASSERT(this->handle != 0);
+    GL(glQueryCounter(this->handle, GL_TIMESTAMP));
+}
+
+u64 Query::RetrieveValue() const
+{
+    ASSERT(this->handle != 0);
+
+    GLuint64 value;
+    GL(glGetQueryObjectui64v(this->handle, GL_QUERY_RESULT, &value));
+
+    return (u64)value;
+}

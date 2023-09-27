@@ -72,6 +72,7 @@ static void Key_X_OnTransition(GLFWwindow* window, bool key_pressed)
     (void)window;
     if (key_pressed) {
         g_ui_mode = !g_ui_mode;
+        SetProfilingEnabled(g_ui_mode);
     }
 }
 
@@ -386,7 +387,7 @@ void RenderLoop(GLFWwindow* window)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        if (g_ui_mode) {
+        if (g_ui_mode && ProfilingMeasurements.size()) {
             auto cpu_sorted = std::vector<std::pair<ProfilerScope, uint64_t>>();
             auto gpu_sorted = std::vector<std::pair<ProfilerScope, uint64_t>>();
             cpu_sorted.reserve(ProfilingMeasurements.size());

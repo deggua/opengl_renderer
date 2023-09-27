@@ -4,89 +4,105 @@
 
 std::unordered_map<ProfilerScope, ProfilerMeasurement> ProfilingMeasurements;
 std::vector<ProfilerQueryable>                         ProfilingQueryables;
+bool                                                   ProfilingEnabled;
 
-ProfilerQueryable::ProfilerQueryable()
+/* ProfilerScope */
+ProfilerScope::ProfilerScope(const char* function, const char* tag) noexcept
 {
-    this->scope       = {NULL, NULL};
-    this->cpu_start   = 0;
-    this->cpu_end     = 0;
-    this->gpu_start_q = 0;
-    this->gpu_end_q   = 0;
+    this->function = function;
+    this->tag      = tag;
 }
 
-ProfilerQueryable::ProfilerQueryable(const char* function, const char* tag)
+bool ProfilerScope::operator==(const ProfilerScope& rhs) const
 {
-    this->scope       = {function, tag};
-    this->cpu_start   = 0;
-    this->cpu_end     = 0;
-    this->gpu_start_q = 0;
-    this->gpu_end_q   = 0;
+    return (!strcmp(this->function, rhs.function) && !strcmp(this->tag, rhs.tag));
 }
 
-ProfilerMeasurement ProfilerQueryable::Measure(void)
+/* ProfilerMeasurement */
+void ProfilerMeasurement::operator+=(const ProfilerMeasurement& rhs)
 {
-    uint64_t cpu_time = this->cpu_end - this->cpu_start;
+    this->cpu_time += rhs.cpu_time;
+    this->gpu_time += rhs.gpu_time;
+}
 
-    GLuint64 gpu_end, gpu_start;
-    GL(glGetQueryObjectui64v(this->gpu_end_q, GL_QUERY_RESULT, &gpu_end));
-    GL(glGetQueryObjectui64v(this->gpu_start_q, GL_QUERY_RESULT, &gpu_start));
-    uint64_t gpu_time = gpu_end - gpu_start;
+/* ProfilerQueryable */
+ProfilerQueryable::ProfilerQueryable(const char* function, const char* tag) noexcept :
+    scope(function, tag)
+{
+    this->gpu_start.Reserve();
+    this->gpu_end.Reserve();
+}
 
-    GL(glDeleteQueries(1, &this->gpu_end_q));
-    GL(glDeleteQueries(1, &this->gpu_start_q));
+ProfilerQueryable::~ProfilerQueryable() noexcept
+{
+    this->gpu_start.Delete();
+    this->gpu_end.Delete();
+}
+
+ProfilerQueryable::ProfilerQueryable(ProfilerQueryable&& other) noexcept :
+    scope(other.scope.function, other.scope.tag)
+{
+    this->cpu_start = other.cpu_start;
+    this->cpu_end   = other.cpu_end;
+
+    this->gpu_start = other.gpu_start;
+    this->gpu_end   = other.gpu_end;
+
+    other.gpu_start = 0;
+    other.gpu_end   = 0;
+}
+
+void ProfilerQueryable::Begin()
+{
+    this->cpu_start = __builtin_readcyclecounter();
+    this->gpu_start.RecordTimestamp();
+}
+
+void ProfilerQueryable::End()
+{
+    this->cpu_end = __builtin_readcyclecounter();
+    this->gpu_end.RecordTimestamp();
+}
+
+ProfilerMeasurement ProfilerQueryable::Get(void) const
+{
+    u64 cpu_time = this->cpu_end - this->cpu_start;
+    u64 gpu_time = this->gpu_end.RetrieveValue() - this->gpu_start.RetrieveValue();
 
     return {cpu_time, gpu_time};
 }
 
-Profiler::Profiler(const char* function, const char* tag, bool ignore_exit)
+/* Profiler */
+Profiler::Profiler(const char* function, const char* tag)
 {
-    this->query       = ProfilerQueryable(function, tag);
-    this->ignore_exit = ignore_exit;
+    if (!ProfilingEnabled) {
+        this->query = INVALID_QUERY;
+        return;
+    }
 
-    GL(glGenQueries(1, &this->query.gpu_start_q));
-    GL(glGenQueries(1, &this->query.gpu_end_q));
+    ProfilingQueryables.emplace_back(function, tag);
+    this->query = ProfilingQueryables.size() - 1;
 
-    this->Begin();
+    ProfilingQueryables[this->query].Begin();
 }
 
 Profiler::~Profiler()
 {
-    if (this->ignore_exit) {
+    if (this->query == INVALID_QUERY) {
         return;
     }
 
-    this->End();
-
-    ProfilingQueryables.push_back(this->query);
-}
-
-void Profiler::Begin(void)
-{
-    this->query.cpu_start = __builtin_readcyclecounter();
-    GL(glQueryCounter(this->query.gpu_start_q, GL_TIMESTAMP));
-}
-
-void Profiler::End(void)
-{
-    this->query.cpu_end = __builtin_readcyclecounter();
-    GL(glQueryCounter(this->query.gpu_end_q, GL_TIMESTAMP));
-}
-
-void Profiler::operator->*(std::function<void(void)> invoke)
-{
-    this->ignore_exit = true;
-
-    this->Begin();
-    invoke();
-    this->End();
-
-    ProfilingQueryables.push_back(this->query);
+    ProfilingQueryables[this->query].End();
 }
 
 void CollectProfilingData(void)
 {
-    for (auto& qable : ProfilingQueryables) {
-        ProfilingMeasurements[qable.scope] += qable.Measure();
+    if (!ProfilingEnabled) {
+        return;
+    }
+
+    for (const auto& query : ProfilingQueryables) {
+        ProfilingMeasurements[query.scope] += query.Get();
     }
 
     ProfilingQueryables.clear();
@@ -94,5 +110,14 @@ void CollectProfilingData(void)
 
 void ResetProfilingData(void)
 {
+    if (!ProfilingEnabled) {
+        return;
+    }
+
     ProfilingMeasurements.clear();
+}
+
+void SetProfilingEnabled(bool enabled)
+{
+    ProfilingEnabled = enabled;
 }
