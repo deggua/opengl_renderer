@@ -355,7 +355,7 @@ Material::Material(const aiMaterial& material, std::string_view directory)
 
     // set the gloss
     material.Get(AI_MATKEY_SHININESS, this->gloss);
-    ASSERT(this->gloss >= 1.0f);
+    this->gloss = glm::min(this->gloss, 1.0f);
 }
 
 void Material::Use(ShaderProgram& sp) const

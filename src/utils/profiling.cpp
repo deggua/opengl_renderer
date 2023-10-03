@@ -23,6 +23,7 @@ void ProfilerMeasurement::operator+=(const ProfilerMeasurement& rhs)
 {
     this->cpu_time += rhs.cpu_time;
     this->gpu_time += rhs.gpu_time;
+    this->hit_count += 1;
 }
 
 /* ProfilerQueryable */

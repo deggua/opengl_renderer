@@ -388,76 +388,80 @@ void RenderLoop(GLFWwindow* window)
         ImGui::NewFrame();
 
         if (g_ui_mode && ProfilingMeasurements.size()) {
-            auto cpu_sorted = std::vector<std::pair<ProfilerScope, uint64_t>>();
-            auto gpu_sorted = std::vector<std::pair<ProfilerScope, uint64_t>>();
+            auto cpu_sorted = std::vector<std::pair<ProfilerScope, ProfilerMeasurement>>();
+            auto gpu_sorted = std::vector<std::pair<ProfilerScope, ProfilerMeasurement>>();
             cpu_sorted.reserve(ProfilingMeasurements.size());
             gpu_sorted.reserve(ProfilingMeasurements.size());
 
             for (const auto& [scope, measurement] : ProfilingMeasurements) {
-                cpu_sorted.push_back({scope, measurement.cpu_time});
-                gpu_sorted.push_back({scope, measurement.gpu_time});
+                cpu_sorted.push_back({scope, measurement});
+                gpu_sorted.push_back({scope, measurement});
             }
 
             std::sort(cpu_sorted.begin(), cpu_sorted.end(), [](auto left, auto right) {
-                return left.second > right.second;
+                return left.second.cpu_time > right.second.cpu_time;
             });
 
             std::sort(gpu_sorted.begin(), gpu_sorted.end(), [](auto left, auto right) {
-                return left.second > right.second;
+                return left.second.gpu_time > right.second.gpu_time;
             });
 
             ImGui::Begin("Profiling Data", &g_ui_mode);
 
             ImGui::Text("CPU");
-            ImGui::Text("%-120s | %-15s | %-s", "Function", "Tag", "Usage");
+            ImGui::Text("%-120s | %-15s | %-10s | %-s", "Function", "Tag", "Usage", "Hit Count");
             ImGui::Text(
                 "----------------------------------------------------------------------------------"
                 "---------------------------------------------------------------------------------"
                 "-");
             const auto& cpu_total_scope  = cpu_sorted[0].first;
-            uint64_t    cpu_total_cycles = cpu_sorted[0].second;
+            uint64_t    cpu_total_cycles = cpu_sorted[0].second.cpu_time;
             ImGui::Text(
-                "%-120s | %-15s | %.04f%%",
+                "%-120s | %-15s | %9.04f%% | %" PRIu64,
                 cpu_total_scope.function,
                 cpu_total_scope.tag,
-                100.0f);
+                100.0f,
+                cpu_sorted[0].second.hit_count);
 
             for (size_t ii = 1; ii < cpu_sorted.size(); ii++) {
                 const auto& entry_scope  = cpu_sorted[ii].first;
                 const auto& entry_cycles = cpu_sorted[ii].second;
 
                 ImGui::Text(
-                    "%-120s | %-15s | %.04f%%",
+                    "%-120s | %-15s | %9.04f%% | %" PRIu64,
                     entry_scope.function,
                     entry_scope.tag,
-                    100.0f * (float)entry_cycles / (float)cpu_total_cycles);
+                    100.0f * (float)entry_cycles.cpu_time / (float)cpu_total_cycles,
+                    entry_cycles.hit_count);
             }
 
             ImGui::Text("");
             ImGui::Text("");
             ImGui::Text("GPU");
-            ImGui::Text("%-120s | %-15s | %-s", "Function", "Tag", "Usage");
+            ImGui::Text("%-120s | %-15s | %-10s | %-s", "Function", "Tag", "Usage", "Hit Count");
             ImGui::Text(
                 "----------------------------------------------------------------------------------"
                 "---------------------------------------------------------------------------------"
                 "-");
             const auto& gpu_total_scope  = gpu_sorted[0].first;
-            uint64_t    gpu_total_cycles = gpu_sorted[0].second;
+            uint64_t    gpu_total_cycles = gpu_sorted[0].second.gpu_time;
             ImGui::Text(
-                "%-120s | %-15s | %.04f%%",
+                "%-120s | %-15s | %9.04f%% | %" PRIu64,
                 gpu_total_scope.function,
                 gpu_total_scope.tag,
-                100.0f);
+                100.0f,
+                gpu_sorted[0].second.hit_count);
 
             for (size_t ii = 1; ii < gpu_sorted.size(); ii++) {
                 const auto& entry_scope  = gpu_sorted[ii].first;
                 const auto& entry_cycles = gpu_sorted[ii].second;
 
                 ImGui::Text(
-                    "%-120s | %-15s | %.04f%%",
+                    "%-120s | %-15s | %9.04f%% | %" PRIu64,
                     entry_scope.function,
                     entry_scope.tag,
-                    100.0f * (float)entry_cycles / (float)gpu_total_cycles);
+                    100.0f * (float)entry_cycles.gpu_time / (float)gpu_total_cycles,
+                    entry_cycles.hit_count);
             }
 
             ImGui::End();

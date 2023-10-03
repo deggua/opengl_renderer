@@ -49,8 +49,9 @@ HASH_IMPL(ProfilerScope, (x.function, x.tag));
 struct ProfilerMeasurement {
     // TODO: should eventually convert these to the same units
     // gpu_time is ns, cpu_time is cycles (?)
-    u64 cpu_time;
-    u64 gpu_time;
+    u64 cpu_time  = 0;
+    u64 gpu_time  = 0;
+    u64 hit_count = 0;
 
     void operator+=(const ProfilerMeasurement& rhs);
 };
