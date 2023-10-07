@@ -530,6 +530,7 @@ void FBO::CheckComplete() const
     ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 }
 
+/* --- Query --- */
 void Query::Reserve()
 {
     ASSERT(this->handle == 0);
@@ -561,4 +562,42 @@ u64 Query::RetrieveValue() const
     GL(glGetQueryObjectui64v(this->handle, GL_QUERY_RESULT, &value));
 
     return (u64)value;
+}
+
+/* --- Image2D --- */
+void Image2D::Reserve(GLenum pix_fmt, size_t width, size_t height)
+{
+    ASSERT(this->handle == 0);
+
+    GL(glGenTextures(1, &this->handle));
+    GL(glBindTexture(GL_TEXTURE_2D, this->handle));
+
+    GL(glTexStorage2D(GL_TEXTURE_2D, 1, pix_fmt, width, height));
+    this->pix_fmt = pix_fmt;
+}
+
+void Image2D::Delete()
+{
+    ASSERT(this->handle != 0);
+
+    GL(glDeleteTextures(1, &this->handle));
+
+    this->handle = 0;
+}
+
+void Image2D::Bind(GLuint slot, GLenum access) const
+{
+    GL(glBindImageTexture(slot, this->handle, 0, GL_FALSE, 0, access, this->pix_fmt));
+}
+
+void Image2D::Unbind() const
+{
+    GL(glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_WRITE, this->pix_fmt));
+}
+
+void Image2D::Clear()
+{
+    // TODO: need to handle where this isn't the case
+    ASSERT(this->pix_fmt == GL_R32F);
+    GL(glClearTexImage(this->handle, 0, GL_RED, GL_FLOAT, NULL));
 }

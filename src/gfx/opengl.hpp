@@ -236,6 +236,19 @@ struct Query : Handle<GLuint> {
     u64  RetrieveValue() const;
 };
 
+struct Image2D : Handle<GLuint> {
+    using Handle<GLuint>::Handle;
+    GLenum pix_fmt;
+
+    void Reserve(GLenum pix_fmt, size_t width, size_t height);
+    void Delete();
+
+    void Bind(GLuint slot, GLenum access = GL_READ_WRITE) const;
+    void Unbind() const;
+
+    void Clear();
+};
+
 template<class... Ts, class = std::enable_if_t<std::conjunction_v<std::is_same<Shader, Ts>...>>>
 void AttachShaders(ShaderProgram program, Shader shader, Ts... shaders)
 {

@@ -199,7 +199,11 @@ struct Renderer_SunLighting {
 
     Renderer_SunLighting();
 
-    void Render(const SunLight& light, const std::vector<Object>& objs, const RenderState& rs);
+    void Render(
+        const SunLight&            light,
+        const std::vector<Object>& objs,
+        const RenderState&         rs,
+        Image2D&                   shadow_depth);
 };
 
 struct Renderer_Skybox {
@@ -310,6 +314,7 @@ struct Renderer {
     // Render FBOs
     MSAA_RT   msaa;
     Simple_RT post[2]; // TODO: this should probably just swap out the color attachment
+    Image2D   shadow_depth;
     usize     post_target = 0;
 
     Renderer(bool opengl_logging = false);

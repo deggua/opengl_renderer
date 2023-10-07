@@ -851,11 +851,19 @@ Renderer_SunLighting::Renderer_SunLighting()
 void Renderer_SunLighting::Render(
     const SunLight&            light,
     const std::vector<Object>& objs,
-    const RenderState&         rs)
+    const RenderState&         rs,
+    Image2D&                   shadow_depth)
 {
     SetupShadowLightingPass(LightType::Sun);
     this->sp_shadow.UseProgram();
     this->sp_shadow.SetUniform("g_light_source.dir", light.dir);
+
+    shadow_depth.Bind(0);
+    shadow_depth.Clear();
+    GL(glMemoryBarrier(
+        GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)); // TODO: might not be necessary, I don't fully
+                                              // understand whether I need `coherent` in the shader
+                                              // or this here
 
     for (const auto& obj : objs) {
         if (obj.CastsShadows()) {
@@ -1271,6 +1279,9 @@ Renderer::Renderer(bool opengl_logging)
 
     // initial bloom setup
     this->rp_bloom.SetResolution(this->res_width, this->res_height);
+
+    // initial shadow depth Image2D
+    this->shadow_depth.Reserve(GL_R32F, this->res_width, this->res_height);
 }
 
 Renderer::Simple_RT& Renderer::GetRenderSource()
@@ -1310,6 +1321,9 @@ Renderer& Renderer::Resolution(u32 width, u32 height)
     }
 
     this->rp_bloom.SetResolution(width, height);
+
+    this->shadow_depth.Delete();
+    this->shadow_depth.Reserve(GL_R32F, width, height);
 
     GL(glViewport(0, 0, width, height));
 
@@ -1387,7 +1401,7 @@ void Renderer::RenderObjectLighting(const SpotLight& light, const std::vector<Ob
 void Renderer::RenderObjectLighting(const SunLight& light, const std::vector<Object>& objs)
 {
     PROFILE_FUNCTION();
-    this->rp_sun_lighting.Render(light, objs, this->rs);
+    this->rp_sun_lighting.Render(light, objs, this->rs, this->shadow_depth);
 }
 
 void Renderer::RenderSkybox(const Skybox& sky)
