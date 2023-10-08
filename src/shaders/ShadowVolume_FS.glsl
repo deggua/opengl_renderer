@@ -3,17 +3,8 @@
 
 out vec4 fo_color;
 
-uniform layout(binding = 0, r32f) restrict coherent image2D g_shadow_depth;
-
-#if 0
-#    define DENSITY 1
-
-float FogIntensity(float depth)
-{
-    float intensity = pow(exp(depth * DENSITY) - 1, 3);
-    return clamp(intensity, 0.0, 1.0);
-}
-#endif
+uniform             layout(binding = 0, r32f) restrict coherent image2DMS g_shadow_depth;
+uniform sampler2DMS g_framebuffer_depth;
 
 float LinearDepth(float z_depth, float z_near, float z_far)
 {
@@ -24,14 +15,21 @@ float LinearDepth(float z_depth, float z_near, float z_far)
 void main()
 {
     // TODO: probably use a uniform for CLIP_NEAR and CLIP_FAR
-    float depth     = LinearDepth(gl_FragCoord.z, 0.1, 50.0);
-    bool  frontface = gl_FrontFacing;
-    ivec2 pix_coord = ivec2(gl_FragCoord.xy);
+    bool  frontface    = gl_FrontFacing;
+    ivec2 pix_coord    = ivec2(gl_FragCoord.xy);
+    float depth_buffer = texelFetch(g_framebuffer_depth, pix_coord, gl_SampleID).r;
 
-    if (!frontface) {
-        imageAtomicAdd(g_shadow_depth, pix_coord, depth);
+    float depth;
+    if (gl_FragCoord.z < depth_buffer) {
+        depth = LinearDepth(gl_FragCoord.z, 0.1, 50.0);
     } else {
-        imageAtomicAdd(g_shadow_depth, pix_coord, -depth);
+        depth = LinearDepth(depth_buffer, 0.1, 50.0);
+    }
+
+    if (frontface) {
+        imageAtomicAdd(g_shadow_depth, pix_coord, gl_SampleID, -depth);
+    } else {
+        imageAtomicAdd(g_shadow_depth, pix_coord, gl_SampleID, depth);
     }
 
     fo_color = vec4(0.0, 0.0, 0.0, 0.0);

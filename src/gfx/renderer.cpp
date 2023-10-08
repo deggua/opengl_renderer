@@ -12,23 +12,33 @@
 #include "utils/profiling.hpp"
 #include "utils/settings.hpp"
 
+SHADER_FILE(Depth_VS);
+
 SHADER_FILE(Lighting_VS);
 SHADER_FILE(Lighting_FS);
+
 SHADER_FILE(ShadowVolume_VS);
 SHADER_FILE(ShadowVolume_FS);
 SHADER_FILE(ShadowVolume_GS);
+
 SHADER_FILE(Skybox_FS);
 SHADER_FILE(Skybox_VS);
+
 SHADER_FILE(PostFX_VS);
 SHADER_FILE(PostFX_Sharpen_FS);
 SHADER_FILE(PostFX_Gamma_FS);
 SHADER_FILE(PostFX_Tonemap_FS);
+
 SHADER_FILE(SphericalBillboard_FS);
 SHADER_FILE(SphericalBillboard_VS);
+
 SHADER_FILE(Bloom_VS);
 SHADER_FILE(BloomDownsample_FS);
 SHADER_FILE(BloomUpsample_FS);
 SHADER_FILE(BloomFinal_FS);
+
+SHADER_FILE(VolumetricFog_VS);
+SHADER_FILE(VolumetricFog_FS);
 
 struct String {
     size_t      len;
@@ -535,6 +545,45 @@ void FullscreenQuad::Draw() const
     GL(glDrawArrays(GL_TRIANGLES, 0, lengthof(fullscreen_quad) / 2));
 }
 
+Renderer_Depth::Renderer_Depth()
+{
+    LOG_DEBUG("Compiling Depth Vertex Shader");
+    this->vs = CompileShader(GL_VERTEX_SHADER, Depth_VS.src, Depth_VS.len);
+
+    LOG_DEBUG("Linking Depth Vertex Shader Program");
+    this->sp = LinkShaders(this->vs);
+    LOG_DEBUG("Depth Vertex Shader Program = %u", this->sp.handle);
+}
+
+void Renderer_Depth::Render(const std::vector<Object>& objs, const RenderState& rs)
+{
+    // depth
+    GL(glEnable(GL_DEPTH_TEST));
+    GL(glDisable(GL_DEPTH_CLAMP));
+    GL(glDepthMask(GL_TRUE));
+    GL(glDepthFunc(GL_LESS));
+
+    // culling
+    GL(glEnable(GL_CULL_FACE));
+    GL(glCullFace(GL_BACK));
+    GL(glFrontFace(GL_CCW));
+
+    // pixel buffer
+    GL(glDisable(GL_BLEND));
+
+    // stencil buffer
+    GL(glDisable(GL_STENCIL_TEST));
+
+    // polygon offset
+    GL(glDisable(GL_POLYGON_OFFSET_FILL));
+
+    for (const auto& obj : objs) {
+        this->sp.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
+
+        obj.DrawVisual(this->sp);
+    }
+}
+
 static constexpr f32 SHADOW_OFFSET_FACTOR = 0.025f;
 static constexpr f32 SHADOW_OFFSET_UNITS  = 1.0f;
 
@@ -852,18 +901,19 @@ void Renderer_SunLighting::Render(
     const SunLight&            light,
     const std::vector<Object>& objs,
     const RenderState&         rs,
-    Image2D&                   shadow_depth)
+    Image2D&                   shadow_depth,
+    TextureRT&                 framebuffer_depth)
 {
     SetupShadowLightingPass(LightType::Sun);
     this->sp_shadow.UseProgram();
     this->sp_shadow.SetUniform("g_light_source.dir", light.dir);
 
-    shadow_depth.Bind(0);
     shadow_depth.Clear();
-    GL(glMemoryBarrier(
-        GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)); // TODO: might not be necessary, I don't fully
-                                              // understand whether I need `coherent` in the shader
-                                              // or this here
+
+    shadow_depth.BindImage(0);
+    this->sp_shadow.SetUniform("g_framebuffer_depth", 0);
+
+    framebuffer_depth.BindMS(GL_TEXTURE0);
 
     for (const auto& obj : objs) {
         if (obj.CastsShadows()) {
@@ -872,6 +922,10 @@ void Renderer_SunLighting::Render(
             this->sp_shadow.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
 
             obj.DrawShadow(this->sp_shadow);
+            GL(glMemoryBarrier(
+                GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)); // TODO: might not be necessary, I don't fully
+                                                      // understand whether I need `coherent` in the
+                                                      // shader or this here
         }
     }
 
@@ -1114,6 +1168,43 @@ void Renderer_Bloom::Render(const TextureRT& src_hdr, const FBO& dst_hdr, f32 ra
     this->quad.Draw();
 }
 
+/* --- Renderer_VolumetricFog --- */
+Renderer_VolumetricFog::Renderer_VolumetricFog()
+{
+    LOG_DEBUG("Compiling Volumetric Fog Vertex Shader");
+    this->vs = CompileShader(GL_VERTEX_SHADER, VolumetricFog_VS.src, VolumetricFog_VS.len);
+
+    LOG_DEBUG("Compiling Volumetric Fog Fragment Shader");
+    this->fs = CompileShader(GL_FRAGMENT_SHADER, VolumetricFog_FS.src, VolumetricFog_FS.len);
+
+    LOG_DEBUG("Linking Volumetric Fog Shaders");
+    this->sp = LinkShaders(this->vs, this->fs);
+
+    LOG_DEBUG("Initializing Volumetric Fog Shader Program");
+    this->sp.UseProgram();
+    this->sp.SetUniform("g_framebuffer_depth", 0);
+}
+
+void Renderer_VolumetricFog::Render(Image2D& shadow_depth, TextureRT& framebuffer_depth)
+{
+    // TODO: be more explicit
+    GL(glEnable(GL_BLEND));
+    GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE));
+    GL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+
+    GL(glEnable(GL_CULL_FACE));
+
+    GL(glDisable(GL_DEPTH_TEST));
+    GL(glDisable(GL_STENCIL_TEST));
+
+    this->sp.UseProgram();
+
+    framebuffer_depth.BindMS(GL_TEXTURE0);
+    shadow_depth.BindImage(0, GL_READ_ONLY);
+
+    this->quad.Draw();
+}
+
 /* --- Renderer_PostFX --- */
 Renderer_PostFX::Renderer_PostFX()
 {
@@ -1258,6 +1349,16 @@ Renderer::Renderer(bool opengl_logging)
     this->msaa.fbo.Attach(this->msaa.color, GL_COLOR_ATTACHMENT0);
     this->msaa.fbo.CheckComplete();
 
+    // setup internal depth render for MSAA
+    this->msaa_depth.fbo.Reserve();
+    this->msaa_depth.depth.Reserve();
+
+    this->msaa_depth.depth
+        .SetupMS(GL_DEPTH_COMPONENT32F, settings.msaa_samples, this->res_width, this->res_height);
+
+    this->msaa_depth.fbo.AttachMS(this->msaa_depth.depth, GL_DEPTH_ATTACHMENT);
+    this->msaa_depth.fbo.CheckComplete();
+
     // setup internal render target for postprocessing
     for (usize ii = 0; ii < lengthof(this->post); ii++) {
         this->post[ii].fbo.Reserve();
@@ -1374,8 +1475,18 @@ void Renderer::StartRender()
     this->shared_data.SubData(0, sizeof(SharedData), &tmp);
 
     // bind the internal frame target and clear the screen
+    this->msaa_depth.fbo.Bind();
+    GL(glClear(GL_DEPTH_BUFFER_BIT));
+}
+
+void Renderer::RenderDepth(const std::vector<Object>& objs)
+{
+    PROFILE_FUNCTION();
+
+    this->rp_depth.Render(objs, this->rs);
+
     this->msaa.fbo.Bind();
-    GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
+    GL(glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 }
 
 // TODO: there should be a better way to organize these, they're very similar
@@ -1401,7 +1512,7 @@ void Renderer::RenderObjectLighting(const SpotLight& light, const std::vector<Ob
 void Renderer::RenderObjectLighting(const SunLight& light, const std::vector<Object>& objs)
 {
     PROFILE_FUNCTION();
-    this->rp_sun_lighting.Render(light, objs, this->rs, this->shadow_depth);
+    this->rp_sun_lighting.Render(light, objs, this->rs, this->shadow_depth, this->msaa_depth.depth);
 }
 
 void Renderer::RenderSkybox(const Skybox& sky)
@@ -1415,6 +1526,12 @@ void Renderer::RenderSprites(const std::vector<Sprite3D>& sprites)
 {
     PROFILE_FUNCTION();
     this->rp_spherical_billboard.Render(sprites, this->rs);
+}
+
+void Renderer::RenderVolumetricFog()
+{
+    PROFILE_FUNCTION();
+    this->rp_volumetric_fog.Render(this->shadow_depth, this->msaa_depth.depth);
 }
 
 void Renderer::FinishGeometry()

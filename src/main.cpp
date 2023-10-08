@@ -495,6 +495,7 @@ void RenderLoop(GLFWwindow* window)
 
             rt.StartRender();
             {
+                rt.RenderDepth(objs);
                 rt.RenderObjectLighting(ambient_light, objs);
                 rt.RenderObjectLighting(sun_dupe, objs);
 
@@ -508,6 +509,8 @@ void RenderLoop(GLFWwindow* window)
                 rt.RenderSkybox(sky);
 
                 rt.RenderSprites(sprites);
+
+                rt.RenderVolumetricFog();
             }
             rt.FinishGeometry();
 

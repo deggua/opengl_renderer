@@ -170,6 +170,20 @@ void TextureRT::Unbind(GLenum texture_slot) const
     GL(glBindTexture(GL_TEXTURE_2D, 0));
 }
 
+void TextureRT::BindMS(GLenum texture_slot) const
+{
+    ASSERT(this->handle != 0);
+
+    GL(glActiveTexture(texture_slot));
+    GL(glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, this->handle));
+}
+
+void TextureRT::UnbindMS(GLenum texture_slot) const
+{
+    GL(glActiveTexture(texture_slot));
+    GL(glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0));
+}
+
 void TextureRT::Reserve()
 {
     ASSERT(this->handle == 0);
@@ -195,6 +209,14 @@ void TextureRT::Setup(GLenum format, GLsizei width, GLsizei height)
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+}
+
+void TextureRT::SetupMS(GLenum format, GLsizei samples, GLsizei width, GLsizei height)
+{
+    ASSERT(this->handle != 0);
+
+    GL(glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, this->handle));
+    GL(glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, format, width, height, GL_TRUE));
 }
 
 /* --- TextureCubemap --- */
@@ -522,6 +544,32 @@ void FBO::Attach(TextureRT tex_rt, GLenum attachment) const
     GL(glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, tex_rt.handle, 0));
 }
 
+void FBO::AttachMS(TextureRT tex_rt, GLenum attachment) const
+{
+    ASSERT(this->handle != 0);
+
+    this->Bind();
+    GL(glFramebufferTexture2D(
+        GL_FRAMEBUFFER,
+        attachment,
+        GL_TEXTURE_2D_MULTISAMPLE,
+        tex_rt.handle,
+        0));
+}
+
+void FBO::Attach(Image2D img_rt, GLenum attachment) const
+{
+    ASSERT(this->handle != 0);
+
+    this->Bind();
+    GL(glFramebufferTexture2D(
+        GL_FRAMEBUFFER,
+        attachment,
+        GL_TEXTURE_2D_MULTISAMPLE,
+        img_rt.handle,
+        0));
+}
+
 void FBO::CheckComplete() const
 {
     ASSERT(this->handle != 0);
@@ -570,9 +618,15 @@ void Image2D::Reserve(GLenum pix_fmt, size_t width, size_t height)
     ASSERT(this->handle == 0);
 
     GL(glGenTextures(1, &this->handle));
-    GL(glBindTexture(GL_TEXTURE_2D, this->handle));
+    GL(glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, this->handle));
 
-    GL(glTexStorage2D(GL_TEXTURE_2D, 1, pix_fmt, width, height));
+    GL(glTexStorage2DMultisample(
+        GL_TEXTURE_2D_MULTISAMPLE,
+        settings.msaa_samples,
+        pix_fmt,
+        width,
+        height,
+        GL_TRUE));
     this->pix_fmt = pix_fmt;
 }
 
@@ -585,19 +639,38 @@ void Image2D::Delete()
     this->handle = 0;
 }
 
-void Image2D::Bind(GLuint slot, GLenum access) const
+void Image2D::Bind() const
 {
-    GL(glBindImageTexture(slot, this->handle, 0, GL_FALSE, 0, access, this->pix_fmt));
+    ASSERT(this->handle != 0);
+
+    GL(glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, this->handle));
 }
 
 void Image2D::Unbind() const
 {
-    GL(glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_WRITE, this->pix_fmt));
+    ASSERT(this->handle != 0);
+
+    GL(glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0));
+}
+
+void Image2D::BindImage(GLuint image_slot, GLenum access) const
+{
+    ASSERT(this->handle != 0);
+
+    GL(glBindImageTexture(image_slot, this->handle, 0, GL_FALSE, 0, access, GL_R32F));
+}
+
+void Image2D::UnbindImage() const
+{
+    ASSERT(this->handle != 0);
+
+    GL(glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F));
 }
 
 void Image2D::Clear()
 {
+    ASSERT(this->handle != 0);
+
     // TODO: need to handle where this isn't the case
-    ASSERT(this->pix_fmt == GL_R32F);
     GL(glClearTexImage(this->handle, 0, GL_RED, GL_FLOAT, NULL));
 }

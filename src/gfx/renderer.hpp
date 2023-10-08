@@ -161,6 +161,15 @@ struct RenderState {
     glm::vec3 pos_view; // View position (in world space)
 };
 
+struct Renderer_Depth {
+    Shader        vs;
+    ShaderProgram sp;
+
+    Renderer_Depth();
+
+    void Render(const std::vector<Object>& objs, const RenderState& rs);
+};
+
 // TODO: it's kind of dumb to compile some of the shaders multiple times since they don't change
 // maybe we can use an asset cache to store compiled shaders
 struct Renderer_AmbientLighting {
@@ -203,7 +212,8 @@ struct Renderer_SunLighting {
         const SunLight&            light,
         const std::vector<Object>& objs,
         const RenderState&         rs,
-        Image2D&                   shadow_depth);
+        Image2D&                   shadow_depth,
+        TextureRT&                 framebuffer_depth);
 };
 
 struct Renderer_Skybox {
@@ -222,6 +232,16 @@ struct Renderer_SphericalBillboard {
     Renderer_SphericalBillboard();
 
     void Render(const std::vector<Sprite3D>& sprites, const RenderState& rs);
+};
+
+struct Renderer_VolumetricFog {
+    Shader         vs, fs;
+    ShaderProgram  sp;
+    FullscreenQuad quad;
+
+    Renderer_VolumetricFog();
+
+    void Render(Image2D& shadow_depth, TextureRT& framebuffer_depth);
 };
 
 struct Renderer_PostFX {
@@ -290,6 +310,11 @@ struct Renderer {
         RBO color;
     };
 
+    struct MSAA_Depth_RT {
+        FBO       fbo;
+        TextureRT depth;
+    };
+
     struct Simple_RT {
         FBO       fbo;
         RBO       depth_stencil;
@@ -297,12 +322,14 @@ struct Renderer {
     };
 
     // render passes
+    Renderer_Depth              rp_depth;
     Renderer_AmbientLighting    rp_ambient_lighting;
     Renderer_PointLighting      rp_point_lighting;
     Renderer_SpotLighting       rp_spot_lighting;
     Renderer_SunLighting        rp_sun_lighting;
     Renderer_Skybox             rp_skybox;
     Renderer_SphericalBillboard rp_spherical_billboard;
+    Renderer_VolumetricFog      rp_volumetric_fog;
     Renderer_Bloom              rp_bloom;
     Renderer_PostFX             rp_postfx;
 
@@ -312,10 +339,11 @@ struct Renderer {
     UBO shared_data;
 
     // Render FBOs
-    MSAA_RT   msaa;
-    Simple_RT post[2]; // TODO: this should probably just swap out the color attachment
-    Image2D   shadow_depth;
-    usize     post_target = 0;
+    MSAA_RT       msaa;
+    MSAA_Depth_RT msaa_depth;
+    Simple_RT     post[2]; // TODO: this should probably just swap out the color attachment
+    Image2D       shadow_depth;
+    usize         post_target = 0;
 
     Renderer(bool opengl_logging = false);
 
@@ -334,12 +362,14 @@ struct Renderer {
     // Rendering methods
     void StartRender();
 
+    void RenderDepth(const std::vector<Object>& objs);
     void RenderObjectLighting(const AmbientLight& light, const std::vector<Object>& objs);
     void RenderObjectLighting(const PointLight& light, const std::vector<Object>& objs);
     void RenderObjectLighting(const SpotLight& light, const std::vector<Object>& objs);
     void RenderObjectLighting(const SunLight& light, const std::vector<Object>& objs);
     void RenderSkybox(const Skybox& sky);
     void RenderSprites(const std::vector<Sprite3D>& sprites);
+    void RenderVolumetricFog();
 
     // TODO: Need to make it more clear that you have to call this function before calling any of
     // the functions below
