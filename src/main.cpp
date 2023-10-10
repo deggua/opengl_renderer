@@ -356,8 +356,6 @@ static void UpdateTime(GLFWwindow* window)
 
 void RenderLoop(GLFWwindow* window)
 {
-    constexpr glm::vec3 rgb_white = {1.0f, 1.0f, 1.0f};
-
     Renderer rt  = Renderer(RENDER_ENABLE_OPENGL_LOGGING).ClearColor(0, 0, 0).FOV(90);
     Skybox   sky = Skybox("assets/tex/sky0");
 
@@ -373,7 +371,7 @@ void RenderLoop(GLFWwindow* window)
         // Object("assets/default.obj").CastsShadows(true),
     };
 
-    AmbientLight ambient_light = AmbientLight(rgb_white, 0.05f);
+    AmbientLight ambient_light = AmbientLight({1.0f, 1.0f, 1.0f}, 0.05f);
 
     while (!glfwWindowShouldClose(window)) {
         PlayerCamera cam      = g_Camera;
@@ -408,6 +406,14 @@ void RenderLoop(GLFWwindow* window)
             });
 
             ImGui::Begin("Profiling Data", &g_ui_mode);
+
+            ImGui::SliderFloat(
+                "Scattering Coefficient",
+                &VolumetricLighting_ScatteringCoefficient,
+                0.0f,
+                1.0f);
+            ImGui::SliderFloat("Density", &VolumetricLighting_Density, 0.0f, 1.0f);
+            ImGui::SliderFloat("Asymmetry", &VolumetricLigthing_Asymmetry, -1.0f, 1.0f);
 
             ImGui::Text("CPU");
             ImGui::Text("%-120s | %-15s | %-10s | %-s", "Function", "Tag", "Usage", "Hit Count");
@@ -510,7 +516,7 @@ void RenderLoop(GLFWwindow* window)
 
                 rt.RenderSprites(sprites);
 
-                rt.RenderVolumetricFog();
+                rt.RenderVolumetricFog(ambient_light, sun_dupe);
             }
             rt.FinishGeometry();
 

@@ -1183,9 +1183,24 @@ Renderer_VolumetricFog::Renderer_VolumetricFog()
     LOG_DEBUG("Initializing Volumetric Fog Shader Program");
     this->sp.UseProgram();
     this->sp.SetUniform("g_framebuffer_depth", 0);
+    this->sp.SetUniform("g_noise", 1);
+
+    LOG_DEBUG("Loading Volumetric Fog Noise");
+    this->noise = Texture2D("assets/blue_noise_ddn.png");
 }
 
-void Renderer_VolumetricFog::Render(Image2D& shadow_depth, TextureRT& framebuffer_depth)
+float VolumetricLighting_ScatteringCoefficient = 0.1f; // [0, 1]
+float VolumetricLighting_Density               = 0.1f; // [0, 1]
+float VolumetricLigthing_Asymmetry             = 0.0f; // [-1, 1]
+
+void Renderer_VolumetricFog::Render(
+    Image2D&            shadow_depth,
+    TextureRT&          framebuffer_depth,
+    float               vertical_fov,
+    float               aspect_ratio,
+    const AmbientLight& ambient_light,
+    const SunLight&     sun_light,
+    const glm::mat4&    mtx_view)
 {
     // TODO: be more explicit
     GL(glEnable(GL_BLEND));
@@ -1197,10 +1212,27 @@ void Renderer_VolumetricFog::Render(Image2D& shadow_depth, TextureRT& framebuffe
     GL(glDisable(GL_DEPTH_TEST));
     GL(glDisable(GL_STENCIL_TEST));
 
+    glm::vec2 half_size_near_plane
+        = {aspect_ratio * glm::tan(vertical_fov / 2.0f), glm::tan(vertical_fov / 2.0f)};
+
+    glm::vec3 sun_dir_viewspace = glm::vec3(mtx_view * glm::vec4(sun_light.Direction(), 0.0f));
+    sun_dir_viewspace           = glm::normalize(sun_dir_viewspace);
+
     this->sp.UseProgram();
 
-    framebuffer_depth.BindMS(GL_TEXTURE0);
+    this->sp.SetUniform("g_half_size_near_plane", half_size_near_plane);
+
+    this->sp.SetUniform("g_ambient_light.color", ambient_light.color * ambient_light.intensity);
+    this->sp.SetUniform("g_direct_light.dir", sun_dir_viewspace); // TODO: not sure this is right
+    this->sp.SetUniform("g_direct_light.color", sun_light.color * sun_light.intensity);
+
+    this->sp.SetUniform("g_scattering_coef", VolumetricLighting_ScatteringCoefficient);
+    this->sp.SetUniform("g_density", VolumetricLighting_Density);
+    this->sp.SetUniform("g_asymmetry", VolumetricLigthing_Asymmetry);
+
     shadow_depth.BindImage(0, GL_READ_ONLY);
+    framebuffer_depth.BindMS(GL_TEXTURE0);
+    this->noise.Bind(GL_TEXTURE1);
 
     this->quad.Draw();
 }
@@ -1528,10 +1560,17 @@ void Renderer::RenderSprites(const std::vector<Sprite3D>& sprites)
     this->rp_spherical_billboard.Render(sprites, this->rs);
 }
 
-void Renderer::RenderVolumetricFog()
+void Renderer::RenderVolumetricFog(const AmbientLight& ambient_light, const SunLight& sun_light)
 {
     PROFILE_FUNCTION();
-    this->rp_volumetric_fog.Render(this->shadow_depth, this->msaa_depth.depth);
+    this->rp_volumetric_fog.Render(
+        this->shadow_depth,
+        this->msaa_depth.depth,
+        this->fov,
+        (float)this->res_width / (float)this->res_height,
+        ambient_light,
+        sun_light,
+        this->rs.mtx_view);
 }
 
 void Renderer::FinishGeometry()

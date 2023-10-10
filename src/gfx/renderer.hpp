@@ -238,10 +238,18 @@ struct Renderer_VolumetricFog {
     Shader         vs, fs;
     ShaderProgram  sp;
     FullscreenQuad quad;
+    Texture2D      noise;
 
     Renderer_VolumetricFog();
 
-    void Render(Image2D& shadow_depth, TextureRT& framebuffer_depth);
+    void Render(
+        Image2D&            shadow_depth,
+        TextureRT&          framebuffer_depth,
+        float               vertical_fov,
+        float               aspect_ratio,
+        const AmbientLight& ambient_light,
+        const SunLight&     sun_light,
+        const glm::mat4&    mtx_wv);
 };
 
 struct Renderer_PostFX {
@@ -369,7 +377,7 @@ struct Renderer {
     void RenderObjectLighting(const SunLight& light, const std::vector<Object>& objs);
     void RenderSkybox(const Skybox& sky);
     void RenderSprites(const std::vector<Sprite3D>& sprites);
-    void RenderVolumetricFog();
+    void RenderVolumetricFog(const AmbientLight& ambient_light, const SunLight& sun_light);
 
     // TODO: Need to make it more clear that you have to call this function before calling any of
     // the functions below
@@ -381,3 +389,7 @@ struct Renderer {
 
     void FinishRender(f32 gamma);
 };
+
+extern float VolumetricLighting_ScatteringCoefficient;
+extern float VolumetricLighting_Density;
+extern float VolumetricLigthing_Asymmetry;
