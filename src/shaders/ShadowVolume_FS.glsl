@@ -1,9 +1,9 @@
 #version 450 core
 #extension GL_NV_shader_atomic_float : require
 
-out vec4 fo_color;
+layout(early_fragment_tests) in;
 
-uniform             layout(binding = 0, r32f) restrict coherent image2DMS g_shadow_depth;
+uniform             layout(binding = 0, r32f) restrict image2DMS g_shadow_depth;
 uniform sampler2DMS g_framebuffer_depth;
 
 float LinearDepth(float z_depth, float z_near, float z_far)
@@ -27,18 +27,8 @@ void main()
     }
 
     if (frontface) {
-        imageAtomicAdd(g_shadow_depth, pix_coord, gl_SampleID, -depth);
-    } else {
-        imageAtomicAdd(g_shadow_depth, pix_coord, gl_SampleID, depth);
+        depth *= -1.0;
     }
 
-    fo_color = vec4(0.0, 0.0, 0.0, 0.0);
+    imageAtomicAdd(g_shadow_depth, pix_coord, gl_SampleID, depth);
 }
-
-// Render front face fog
-// Subtract back face fog
-
-// Add fog up to front face
-// Subtract fog up to back face
-
-// Blend onto the main framebuffer

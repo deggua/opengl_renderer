@@ -28,7 +28,7 @@
 #include "imgui_impl_opengl3.h"
 
 SunLight sun_light
-    = SunLight().Direction({-1.0f, -1.0f, 0.0f}).Color(1.0f, 1.0f, 1.0f).Intensity(1.0f);
+    = SunLight().Direction({-1.0f, -1.0f, 0.0f}).Color(1.0f, 0.8f, 0.2f).Intensity(1.0f);
 SpotLight spot_light = SpotLight()
                            .Direction({0.0f, -1.0f, 0.0f})
                            .Position(0.0f, 0.0f, 0.0f)

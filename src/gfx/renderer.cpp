@@ -909,10 +909,8 @@ void Renderer_SunLighting::Render(
     this->sp_shadow.SetUniform("g_light_source.dir", light.dir);
 
     shadow_depth.Clear();
-
     shadow_depth.BindImage(0);
     this->sp_shadow.SetUniform("g_framebuffer_depth", 0);
-
     framebuffer_depth.BindMS(GL_TEXTURE0);
 
     for (const auto& obj : objs) {
@@ -922,10 +920,6 @@ void Renderer_SunLighting::Render(
             this->sp_shadow.SetUniform("g_mtx_wvp", rs.mtx_vp * obj.WorldMatrix());
 
             obj.DrawShadow(this->sp_shadow);
-            GL(glMemoryBarrier(
-                GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)); // TODO: might not be necessary, I don't fully
-                                                      // understand whether I need `coherent` in the
-                                                      // shader or this here
         }
     }
 
